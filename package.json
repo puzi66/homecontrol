@@ -1,0 +1,27 @@
+{
+  "name": "homecontrol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Home control system - device discovery, registry and control layer over Home Assistant",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "scan": "tsx src/cli/scan.ts"
+  },
+  "dependencies": {
+    "@fastify/static": "^8.0.4",
+    "@fastify/websocket": "^11.0.2",
+    "fastify": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

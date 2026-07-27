@@ -1,0 +1,20 @@
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homecontrol-ha
+    restart: unless-stopped
+    volumes:
+      - ./homeassistant/config:/config
+    environment:
+      # No /etc/localtime bind mount here — that path does not exist on a
+      # Windows host and the container fails to start. TZ alone is enough.
+      - TZ=Asia/Jerusalem
+    ports:
+      - '8123:8123'
+    # Host networking would let HA auto-discover devices via mDNS/SSDP, but it
+    # is not supported by Docker Desktop on Windows. With bridge networking the
+    # integrations below still work because they talk to devices by IP; add
+    # them manually from Settings -> Devices & services.
+    #
+    # On a Linux host, replace the ports block with:
+    #   network_mode: host

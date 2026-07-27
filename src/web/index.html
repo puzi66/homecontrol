@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>הבית שלי</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<!-- אווירה: כמה כתמי אור שנעים לאט מאחורי הכל -->
+<div class="aurora" aria-hidden="true">
+  <span class="aurora__blob aurora__blob--1"></span>
+  <span class="aurora__blob aurora__blob--2"></span>
+  <span class="aurora__blob aurora__blob--3"></span>
+  <span class="aurora__grain"></span>
+</div>
+
+<aside class="rail">
+  <div class="brand">
+    <div class="brand__orb" aria-hidden="true"></div>
+    <div>
+      <strong>הבית שלי</strong>
+      <em id="brand-sub">מתחבר…</em>
+    </div>
+  </div>
+
+  <nav class="nav">
+    <button class="nav__btn is-active" data-view="home"><span>🏠</span> בית</button>
+    <button class="nav__btn" data-view="automations"><span>⚡</span> אוטומציות<i class="nav__count" id="count-rules"></i></button>
+    <button class="nav__btn" data-view="activity"><span>📜</span> יומן</button>
+    <button class="nav__btn" data-view="network"><span>📡</span> רשת<i class="nav__count nav__count--warn" id="count-new"></i></button>
+  </nav>
+
+  <div class="rooms">
+    <h2>חדרים</h2>
+    <div class="rooms__list" id="room-filter"></div>
+  </div>
+
+  <div class="sunbox" id="sunbox">
+    <div><span>🌅</span><b id="sun-rise">—</b></div>
+    <div><span>🌇</span><b id="sun-set">—</b></div>
+  </div>
+
+  <button class="cta" id="scan-btn">
+    <span class="cta__pulse" aria-hidden="true"></span>
+    <span class="cta__text">
+      <strong>הוספת מכשיר</strong>
+      <em>סריקת הרשת</em>
+    </span>
+    <span class="cta__icon" aria-hidden="true">＋</span>
+  </button>
+</aside>
+
+<main class="stage">
+
+  <!-- ═══ בית ═══ -->
+  <section class="view" id="view-home">
+    <header class="hero">
+      <div class="hero__text">
+        <h1 id="greeting">שלום</h1>
+        <p id="hero-sub">—</p>
+      </div>
+      <div class="hero__stats">
+        <div class="stat"><b id="stat-on">0</b><span>פעילים</span></div>
+        <div class="stat"><b id="stat-devices">0</b><span>מכשירים</span></div>
+        <div class="stat"><b id="stat-rooms">0</b><span>חדרים</span></div>
+      </div>
+    </header>
+
+    <div class="section">
+      <div class="section__head">
+        <h2>סצנות</h2>
+        <button class="ghost" id="scene-add">＋ סצנה חדשה</button>
+      </div>
+      <div class="scenes" id="scenes-body"></div>
+    </div>
+
+    <div class="section">
+      <div class="section__head"><h2>מכשירים</h2></div>
+      <div id="devices-body"></div>
+    </div>
+  </section>
+
+  <!-- ═══ אוטומציות ═══ -->
+  <section class="view" id="view-automations" hidden>
+    <header class="hero hero--slim">
+      <div class="hero__text">
+        <h1>אוטומציות</h1>
+        <p>הבית עושה דברים לבד. כל כלל הוא משפט אחד: כאשר משהו קורה — תעשה משהו.</p>
+      </div>
+      <button class="primary" id="rule-add">＋ כלל חדש</button>
+    </header>
+    <div id="rules-body"></div>
+  </section>
+
+  <!-- ═══ יומן ═══ -->
+  <section class="view" id="view-activity" hidden>
+    <header class="hero hero--slim">
+      <div class="hero__text">
+        <h1>יומן</h1>
+        <p>מה הבית עשה לאחרונה.</p>
+      </div>
+      <button class="ghost" id="log-clear">נקה יומן</button>
+    </header>
+    <div id="activity-body"></div>
+  </section>
+
+  <!-- ═══ רשת ═══ -->
+  <section class="view" id="view-network" hidden>
+    <header class="hero hero--slim">
+      <div class="hero__text">
+        <h1>רשת</h1>
+        <p id="net-sub">כל מה שהסריקה האחרונה מצאה.</p>
+      </div>
+    </header>
+    <div class="tabs" id="net-tabs">
+      <button class="tab is-active" data-tab="found">מכשירים שהתגלו</button>
+      <button class="tab" data-tab="wifi">רשתות אלחוטיות</button>
+    </div>
+    <div class="chips" id="disc-filter">
+      <button class="chip is-active" data-filter="new">לא נוספו</button>
+      <button class="chip" data-filter="smart">חכמים</button>
+      <button class="chip" data-filter="all">הכל</button>
+    </div>
+    <div id="discovered-body"></div>
+    <div id="wifi-body" hidden></div>
+  </section>
+</main>
+
+<!-- ═══ סריקה ═══ -->
+<div class="overlay" id="scan-overlay" hidden>
+  <div class="sheet">
+    <header class="sheet__head">
+      <div><h2>סריקת רשת</h2><p>מחפש כל מכשיר בתת-הרשתות המקומיות.</p></div>
+      <button class="x" id="scan-close" aria-label="סגור">✕</button>
+    </header>
+    <div class="scanbar"><span id="scan-bar-fill"></span></div>
+    <div class="termlog" id="scan-log" aria-live="polite"></div>
+    <div class="sheet__body">
+      <div class="sheet__toolbar">
+        <span id="scan-count">0 נמצאו</span>
+        <label class="switchlbl"><input type="checkbox" id="scan-deep" /><span>סריקה מעמיקה</span></label>
+        <label class="switchlbl"><input type="checkbox" id="scan-onlynew" checked /><span>הסתר שנוספו</span></label>
+      </div>
+      <div id="scan-rows"></div>
+    </div>
+    <footer class="sheet__foot">
+      <button class="ghost" id="scan-rescan">סרוק שוב</button>
+      <button class="primary" id="scan-done">סיום</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ═══ עורך מכשיר ═══ -->
+<div class="overlay" id="edit-overlay" hidden>
+  <div class="sheet sheet--narrow">
+    <header class="sheet__head">
+      <div><h2 id="edit-title">מכשיר</h2><p id="edit-sub" dir="ltr"></p></div>
+      <button class="x" id="edit-close" aria-label="סגור">✕</button>
+    </header>
+    <form class="form" id="edit-form">
+      <label class="f"><span>שם</span><input type="text" id="edit-name" required maxlength="60" autocomplete="off" /></label>
+      <div class="f2">
+        <label class="f"><span>סוג</span><select id="edit-kind"></select></label>
+        <label class="f"><span>חדר</span><input type="text" id="edit-room" list="room-options" placeholder="ללא חדר" autocomplete="off" /><datalist id="room-options"></datalist></label>
+      </div>
+      <label class="f"><span>דרייבר</span><select id="edit-driver"></select></label>
+      <div id="edit-driver-config"></div>
+      <label class="f"><span>הערות</span><textarea id="edit-notes" rows="2" maxlength="400" placeholder="אופציונלי"></textarea></label>
+      <div class="factbox" id="edit-meta"></div>
+      <footer class="form__foot">
+        <button type="button" class="danger" id="edit-delete">הסר</button>
+        <span class="grow"></span>
+        <button type="button" class="ghost" id="edit-cancel">ביטול</button>
+        <button type="submit" class="primary">שמור</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- ═══ בונה כללים / סצנות ═══ -->
+<div class="overlay" id="rule-overlay" hidden>
+  <div class="sheet">
+    <header class="sheet__head">
+      <div><h2 id="rule-title">כלל חדש</h2><p id="rule-sub">כאשר משהו קורה — הבית עושה משהו.</p></div>
+      <button class="x" id="rule-close" aria-label="סגור">✕</button>
+    </header>
+    <div class="sheet__body">
+      <label class="f"><span>שם</span><input type="text" id="rule-name" maxlength="60" placeholder="למשל: כיבוי אורות בלילה" autocomplete="off" /></label>
+
+      <div class="f" id="rule-icon-wrap" hidden>
+        <span>אייקון</span>
+        <div class="iconpick" id="rule-icon"></div>
+      </div>
+
+      <div class="block" id="rule-when-block">
+        <div class="block__head"><h3><span>⏱</span> כאשר</h3><button class="ghost sm" id="add-trigger">＋ הוסף טריגר</button></div>
+        <div id="triggers-body" class="stack"></div>
+      </div>
+
+      <div class="block" id="rule-if-block">
+        <div class="block__head"><h3><span>🔎</span> רק אם</h3><button class="ghost sm" id="add-condition">＋ הוסף תנאי</button></div>
+        <div id="conditions-body" class="stack"></div>
+      </div>
+
+      <div class="block">
+        <div class="block__head"><h3><span>▶</span> אז</h3><button class="ghost sm" id="add-action">＋ הוסף פעולה</button></div>
+        <div id="actions-body" class="stack"></div>
+      </div>
+    </div>
+    <footer class="sheet__foot">
+      <button class="danger" id="rule-delete" hidden>מחק</button>
+      <span class="grow"></span>
+      <button class="ghost" id="rule-cancel">ביטול</button>
+      <button class="primary" id="rule-save">שמור</button>
+    </footer>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="/app.js" type="module"></script>
+</body>
+</html>

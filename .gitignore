@@ -1,0 +1,27 @@
+node_modules/
+dist/
+.env
+*.log
+
+# Runtime state: the device registry, the automation store and the OUI cache.
+#
+# devices.json holds every MAC and IP in the house, and its driverConfig is
+# where the Hue bridge username and the vacuum token end up once configured —
+# these are credentials to someone's home. They must never be committed.
+#
+# Note the trailing /* rather than a bare data/: git cannot re-include a file
+# from a directory that has itself been excluded, so `data/` plus `!data/.gitkeep`
+# would silently drop the placeholder too.
+data/*
+!data/.gitkeep
+
+# Home Assistant container volume — its own state, rebuilt on first run.
+homeassistant/config/*
+!homeassistant/config/.gitkeep
+
+# Claude Code machine-local settings (contains this machine's own subnet).
+.claude/settings.local.json
+
+# Private map of the home network: addresses, device names, what is where.
+# Useful locally, must never be published.
+NETWORK.md
