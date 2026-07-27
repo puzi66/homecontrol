@@ -8,7 +8,11 @@ services:
     environment:
       # No /etc/localtime bind mount here — that path does not exist on a
       # Windows host and the container fails to start. TZ alone is enough.
-      - TZ=Asia/Jerusalem
+      #
+      # Set TZ in .env to your own zone (e.g. TZ=Europe/Berlin). Without it the
+      # container runs on UTC and Home Assistant's own time-based automations
+      # will be offset.
+      - TZ=${TZ:-Etc/UTC}
     ports:
       - '8123:8123'
     # Host networking would let HA auto-discover devices via mDNS/SSDP, but it

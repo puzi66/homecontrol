@@ -761,13 +761,64 @@ select option { background: #10131f; }
 
 @media (max-width: 820px) {
   body { grid-template-columns: 1fr; }
-  .rail { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }
-  .rail .rooms, .rail .sunbox { display: none; }
-  .nav { flex-direction: row; flex-wrap: wrap; }
-  .cta { margin-inline-start: auto; }
-  .stage { padding: 22px 18px 60px; }
-  .hero h1 { font-size: 27px; }
+  .rail {
+    position: sticky; top: 0; height: auto;
+    flex-direction: row; flex-wrap: wrap; align-items: center;
+    gap: 12px; padding: 14px 16px;
+  }
+  .brand { flex: 1; }
+  .nav { flex-direction: row; flex-wrap: wrap; order: 3; width: 100%; }
+  .nav__btn { flex: 1; justify-content: center; padding: 9px 8px; font-size: 13px; }
+  .cta { order: 2; padding: 10px 13px; }
+  .cta__text em { display: none; }
+
+  /* חדרים הופכים לרצועת שבבים שנגללת אופקית — במסך קטן זה עדיף על עמודה,
+     ועדיף בהרבה על להסתיר את הסינון לגמרי. */
+  .rooms { order: 4; width: 100%; flex: none; }
+  .rooms h2 { display: none; }
+  .rooms__list {
+    flex-direction: row; gap: 6px;
+    overflow-x: auto; scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .rooms__list::-webkit-scrollbar { display: none; }
+  .rooms__list button {
+    flex: 0 0 auto;
+    border: 1px solid var(--line); border-radius: 99px;
+    padding: 6px 14px;
+  }
+  .rooms__list button.is-active { border-color: var(--line-2); }
+  .rooms__list button i { display: none; }
+
+  .sunbox { order: 5; width: 100%; padding: 8px 12px; }
+
+  .stage { padding: 22px 16px 60px; }
+  .hero { gap: 18px; margin-bottom: 26px; }
+  .hero h1 { font-size: 26px; }
+  .hero__stats { width: 100%; }
+  .stat { flex: 1; min-width: 0; padding: 10px 8px; }
   .f2 { grid-template-columns: 1fr; }
+  .grid { grid-template-columns: 1fr; }
+
+  /* מטרות נגיעה גדולות יותר */
+  .qa { padding: 9px 14px; font-size: 13px; }
+  .switch { width: 50px; height: 28px; }
+  .switch::after { width: 22px; height: 22px; }
+  .switch.is-on::after { transform: translateX(-22px); }
+
+  /* הגיליונות תופסים כמעט את כל המסך בנייד */
+  .overlay { padding: 0; align-items: flex-end; }
+  .sheet { width: 100%; max-height: 92vh; border-radius: 22px 22px 0 0; border-bottom: 0; }
+  .sheet__head, .sheet__body, .sheet__foot, .form { padding-inline: 16px; }
+  .line { gap: 6px; }
+}
+
+/* מרווח לאזור הבטוח בתחתית מסכי iPhone */
+@supports (padding: env(safe-area-inset-bottom)) {
+  @media (max-width: 820px) {
+    .stage { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+    .sheet__foot { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
