@@ -96,6 +96,14 @@ class AutomationEngine extends EventEmitter {
     this.#startedAt = Date.now();
     log.info('automation engine started');
 
+    if (!CONFIG.locationConfigured) {
+      log.warn(
+        'HOMECONTROL_LAT / HOMECONTROL_LON are not set — sunrise and sunset are ' +
+          'being computed for the default placeholder location, so sun-based ' +
+          'automations will fire at the wrong time. Set them in .env.',
+      );
+    }
+
     // First poll immediately so the dashboard has state to show.
     void this.pollStates();
 

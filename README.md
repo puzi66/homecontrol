@@ -56,7 +56,7 @@ pnpm start
 
 Then open <http://localhost:9123> and press **הוספת מכשיר** to sweep *their* network. Nothing is hardcoded to this house: subnets come from whatever adapters the machine has, and the device registry starts empty. Verified — a clean copy with no `data/` boots to zero devices and builds its own state from the first scan.
 
-Optionally copy `.env.example` to `.env` and set `HOMECONTROL_LAT` / `HOMECONTROL_LON` so sunrise and sunset match their location. The default is Tel Aviv.
+Copy `.env.example` to `.env` and set `HOMECONTROL_LAT` / `HOMECONTROL_LON` to their own coordinates. The built-in default is Greenwich — a placeholder, not a guess — so sun-based automations fire at the wrong time until this is set. The server logs a warning on startup while it is unset.
 
 ### Three things to tell them up front
 
@@ -122,7 +122,7 @@ Two details that matter:
 - **Time triggers are deduplicated per minute.** Without that, a 15-second tick fires the same 07:30 rule four times.
 - **State triggers are edge-triggered.** They fire on the transition into a matching value, not for as long as it matches — otherwise "battery below 20%" would fire every 20 seconds until the robot charged.
 
-Sunrise and sunset are computed locally (`src/automations/sun.ts`) so dusk automations survive an internet outage. Accuracy against published times for Tel Aviv: within 2–3 minutes near the equinoxes and midsummer, drifting to ~6 minutes at the winter solstice. Set `HOMECONTROL_LAT` / `HOMECONTROL_LON` for a different location.
+Sunrise and sunset are computed locally (`src/automations/sun.ts`) so dusk automations survive an internet outage. Accuracy against published almanac times at mid latitudes: within 2–3 minutes near the equinoxes and midsummer, drifting to ~6 minutes at the winter solstice. **Set `HOMECONTROL_LAT` / `HOMECONTROL_LON` in `.env`** — the default is a Greenwich placeholder.
 
 ## Drivers
 

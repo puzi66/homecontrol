@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -5,6 +6,44 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 /** Repo root, resolved whether we run from src/ (tsx) or dist/ (compiled). */
 export const ROOT = path.resolve(here, '..');
+
+/**
+ * Load .env into process.env, if it exists.
+ *
+ * Hand-rolled rather than pulling in dotenv: we need `KEY=value`, comments and
+ * optional quotes, which is about ten lines. Values already present in the real
+ * environment win, so an explicit `HOMECONTROL_PORT=... pnpm start` still
+ * overrides the file.
+ */
+function loadEnvFile(): void {
+  const file = path.join(ROOT, '.env');
+  let raw: string;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch {
+    return; // no .env is the normal case
+  }
+
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const eq = trimmed.indexOf('=');
+    if (eq <= 0) continue;
+
+    const key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (key && process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+loadEnvFile();
 
 export const PATHS = {
   root: ROOT,
@@ -29,12 +68,18 @@ export const CONFIG = {
 
   /**
    * Where the house is. Used only for local sunrise/sunset maths, so that
-   * "switch the lights on at dusk" needs no internet. Defaults to Tel Aviv.
+   * "switch the lights on at dusk" needs no internet.
+   *
+   * The default is Greenwich — a deliberate placeholder, not a guess at your
+   * location. Set HOMECONTROL_LAT / HOMECONTROL_LON in .env, or sun-based
+   * automations will fire at the wrong time. `locationConfigured` below drives
+   * the startup warning that says so.
    */
   location: {
-    latitude: num('HOMECONTROL_LAT', 32.0853),
-    longitude: num('HOMECONTROL_LON', 34.7818),
+    latitude: num('HOMECONTROL_LAT', 51.4779),
+    longitude: num('HOMECONTROL_LON', -0.0015),
   },
+  locationConfigured: Boolean(process.env['HOMECONTROL_LAT'] && process.env['HOMECONTROL_LON']),
 
   /** Home Assistant base URL and long-lived access token. */
   ha: {

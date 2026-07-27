@@ -4,11 +4,11 @@
  * Implements the standard sunrise equation. Deliberately not an API call:
  * automations that fire at sunset must keep working when the internet is down.
  *
- * Accuracy, measured against published times for Tel Aviv: within 2-3 minutes
- * around the equinoxes and the summer solstice, drifting to about 6 minutes at
- * the winter solstice. That is inherent to the simplified equation of centre
- * used here, and it is fine for "switch the lamps on at dusk" — anyone who
- * wants it tighter can set an offset on the trigger.
+ * Accuracy, checked against published almanac times at mid latitudes: within
+ * 2-3 minutes around the equinoxes and the summer solstice, drifting to about
+ * 6 minutes at the winter solstice. That is inherent to the simplified equation
+ * of centre used here, and it is fine for "switch the lamps on at dusk" —
+ * anyone who wants it tighter can set an offset on the trigger.
  */
 
 const DEG = Math.PI / 180;
