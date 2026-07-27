@@ -66,6 +66,79 @@ Copy `.env.example` to `.env` and set `HOMECONTROL_LAT` / `HOMECONTROL_LON` to t
 
 **3. Do not put the discovery engine in a container.** Docker Desktop on Windows and macOS cannot give a container real host networking, and without it the container sits on a private bridge network and sees none of the LAN — which is the entire point of this app. Run the Node process natively. The container in `docker-compose.yml` is for Home Assistant only.
 
+## Running it on an Android phone (Termux)
+
+The app is pure JavaScript with no compiled dependencies, so it runs anywhere
+Node 20+ does — including on a phone under [Termux](https://termux.dev). This is
+a real option, with real limits. Read both halves before committing to it.
+
+```bash
+pkg update && pkg install nodejs git
+git clone https://github.com/<you>/homecontrol && cd homecontrol
+npm install && npm run build
+
+# Android suspends background processes. Without this, time and sun
+# triggers stop firing the moment the screen goes off.
+pkg install termux-api && termux-wake-lock
+
+npm start
+```
+
+Then open `http://localhost:9123` in the phone's browser.
+
+The server prints a capability report at startup saying exactly what works and
+what does not on that device, and `GET /api/capabilities` returns the same thing.
+Use `npx tsx src/cli/liveness-check.ts` to measure the coverage gap on your own
+network before deciding.
+
+### What you lose, concretely
+
+**Host discovery is weaker.** The ARP sweep is the best host finder there is: it
+sees every device with an IP, whether or not it listens on anything. Android will
+not give it to you — `arp` and `ip` are absent from a base Termux install, and
+`/proc/net/arp` has been unreadable by unprivileged apps since Android 10. So
+discovery falls back to a TCP liveness sweep, which only finds devices with at
+least one open TCP port.
+
+Measured on a real 42-host home network: **ARP found 40 hosts, the TCP sweep
+found 29.** The 11 it could not see included a robot vacuum, two IR blasters and
+three cloud-only ESP devices — none of which listen on any TCP port at all.
+
+Two mitigations are built in. The scan result carries a `hostDiscovery` field and
+the dashboard says out loud when a sweep was partial, rather than quietly showing
+a short list. And when there is no ARP table, the miio unicast pass widens from
+"known hosts" to the whole subnet, which is what keeps vacuums findable — they
+answer UDP 54321 and nothing else.
+
+**Automations are only as reliable as the wake lock.** `termux-wake-lock` keeps
+the process alive, but Android may still kill it under memory pressure, and it
+stops when the phone reboots. An automation engine wants an always-on host; a
+phone is not one.
+
+**WiFi listing and gateway detection go quiet.** Both are implemented against
+Windows tooling and return empty elsewhere. Already handled, no crash.
+
+**Devices get keyed by IP, not MAC.** No ARP table means no MAC addresses, so the
+registry identifies devices as `ip:192.168.1.x`. That identity breaks when DHCP
+moves a lease. Reserve addresses on the router if you go this route.
+
+### iOS
+
+Not possible. There is no Termux equivalent, a native rewrite would need Apple's
+multicast entitlement (granted by application only), and iOS background limits
+would make the automation engine unreliable even then. A browser cannot help
+either: the entire discovery engine and every driver needs raw UDP and TCP
+sockets, and the web platform exposes neither.
+
+### The recommendation
+
+Keep the engine on a machine that is always on, and treat the phone as a remote
+control — the dashboard is responsive and installs to the home screen. To reach
+it from outside the house, put both devices on a private VPN such as Tailscale.
+
+**Do not port-forward this or put it behind a public tunnel.** There is no
+authentication: anyone who reaches the port can operate your home.
+
 ## How discovery works
 
 A plain ping sweep misses most smart devices, because plenty of them ignore ICMP. This runs eight passes instead, and merges the results by IP:

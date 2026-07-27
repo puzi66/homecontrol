@@ -11,9 +11,12 @@ import { callService, entitiesInDomains, haAvailable } from './ha/client.js';
 import type { DeviceKind, ScanProgress } from './discovery/types.js';
 import { scanWifiNetworks } from './discovery/wifi.js';
 import { logger } from './logger.js';
+import { detectCapabilities, reportCapabilities, type Capabilities } from './platform.js';
 import { registry } from './registry/store.js';
 import type { AdoptRequest } from './registry/types.js';
 import { scanManager } from './scan-manager.js';
+
+let capabilities: Capabilities | null = null;
 
 const log = logger('server');
 
@@ -52,6 +55,11 @@ export async function buildServer(): Promise<FastifyInstance> {
   }));
 
   app.get('/api/interfaces', async () => ({ interfaces: await activeInterfaces() }));
+
+  /** What this host can actually do, so the dashboard can explain any gaps. */
+  app.get('/api/capabilities', async () => ({
+    capabilities: capabilities ?? (capabilities = await detectCapabilities()),
+  }));
 
   // --- Discovery ---------------------------------------------------------
 
@@ -370,6 +378,9 @@ export async function buildServer(): Promise<FastifyInstance> {
 }
 
 export async function startServer(): Promise<FastifyInstance> {
+  capabilities = await detectCapabilities();
+  reportCapabilities(capabilities);
+
   await registry.load();
   await automations.load();
 

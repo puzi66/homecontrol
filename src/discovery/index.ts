@@ -7,7 +7,8 @@ import { classify } from './classify.js';
 import { discoverTuya } from './tuya.js';
 import { discoverMdns } from './mdns.js';
 import { discoverMiio, probeMiioBatch } from './miio.js';
-import { activeInterfaces, broadcastForCidr, ipToInt, powershell } from './net.js';
+import { tcpLivenessSweep } from './liveness.js';
+import { activeInterfaces, broadcastForCidr, hostsInCidr, ipToInt, powershell } from './net.js';
 import { lookupVendors } from './oui.js';
 import { scanPortsBatch } from './ports.js';
 import { discoverSsdp } from './ssdp.js';
@@ -156,24 +157,70 @@ export async function scanNetwork(options: ScanOptions = {}, onProgress?: Progre
   emit({ phase: 'stage', stage: 'arp', message: 'Reading the ARP table…' });
 
   const inScope = subnetMatcher(subnets);
+  let arpRows = 0;
   for (const entry of await readArpTable()) {
     if (!inScope(entry.ip)) continue;
+    arpRows += 1;
     const d = draftFor(entry.ip);
     d.mac = entry.mac;
     d.sources.add('arp');
     d.evidence['arpState'] = entry.state;
   }
 
-  log.info(`${drafts.size} host(s) seen`);
+  // --- Stage 2a: fall back to a TCP sweep when there is no ARP table --------
+  // Android is the case that matters: no `arp`, no `ip`, and /proc/net/arp is
+  // off-limits to unprivileged apps. Without this the scan would only ever see
+  // devices that answered a protocol probe.
+  let hostDiscovery: ScanResult['hostDiscovery'] = 'arp';
+  if (arpRows === 0) {
+    const candidates = subnets.flatMap((cidr) => hostsInCidr(cidr, CONFIG.discovery.maxSubnetHosts));
+    if (candidates.length > 0) {
+      hostDiscovery = 'tcp-sweep';
+      log.warn('no neighbour table on this platform — falling back to a TCP liveness sweep');
+      emit({
+        phase: 'stage',
+        stage: 'liveness',
+        message: `No ARP table on this platform — TCP-sweeping ${candidates.length} addresses…`,
+      });
+      for (const host of await tcpLivenessSweep(candidates)) {
+        const d = draftFor(host.ip);
+        d.sources.add('tcp');
+        for (const p of host.openPorts) if (!d.openPorts.includes(p)) d.openPorts.push(p);
+      }
+    } else {
+      hostDiscovery = 'protocol-only';
+    }
+  }
+
+  log.info(`${drafts.size} host(s) seen via ${hostDiscovery}`);
 
   // --- Stage 2b: confirm miio by unicast ---------------------------------
-  // The broadcast pass drops responders at random, so re-ask every host we now
-  // know about individually. This is what actually pins down vacuums and other
-  // Xiaomi-ecosystem gear.
-  const unconfirmed = [...drafts.values()].filter((d) => !d.sources.has('miio')).map((d) => d.ip);
-  if (unconfirmed.length > 0) {
-    emit({ phase: 'stage', stage: 'miio', message: `Checking ${unconfirmed.length} host(s) for miio…` });
-    for (const r of await probeMiioBatch(unconfirmed)) applyMiio(r);
+  // The broadcast pass drops responders at random, so re-ask individually. This
+  // is what actually pins down vacuums and other Xiaomi-ecosystem gear.
+  //
+  // Which addresses to ask matters. With an ARP table, the known hosts are the
+  // complete list. Without one we must probe the whole subnet instead: a vacuum
+  // opens no TCP ports at all, so the liveness sweep never sees it, and relying
+  // on the lossy broadcast alone would find it only some of the time. Measured
+  // on a real network, the TCP sweep missed 12 of 40 hosts — including the
+  // vacuum and both IR blasters — so this widening is what keeps the Android
+  // path able to find them.
+  const alreadyMiio = new Set(
+    [...drafts.values()].filter((d) => d.sources.has('miio')).map((d) => d.ip),
+  );
+  const miioCandidates = (
+    hostDiscovery === 'arp'
+      ? [...drafts.keys()]
+      : subnets.flatMap((cidr) => hostsInCidr(cidr, CONFIG.discovery.maxSubnetHosts))
+  ).filter((ip) => !alreadyMiio.has(ip));
+
+  if (miioCandidates.length > 0) {
+    emit({
+      phase: 'stage',
+      stage: 'miio',
+      message: `Checking ${miioCandidates.length} address(es) for miio…`,
+    });
+    for (const r of await probeMiioBatch(miioCandidates)) applyMiio(r);
   }
 
   // --- Stage 3: reverse DNS ----------------------------------------------
@@ -299,6 +346,7 @@ export async function scanNetwork(options: ScanOptions = {}, onProgress?: Progre
     subnetsScanned: subnets,
     devices,
     wifiNetworks,
+    hostDiscovery,
   };
 
   log.info(`scan finished in ${result.durationMs}ms: ${devices.length} device(s)`);

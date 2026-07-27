@@ -106,6 +106,18 @@ export interface ScanResult {
   subnetsScanned: string[];
   devices: DiscoveredDevice[];
   wifiNetworks: WifiNetwork[];
+  /**
+   * How live hosts were found, and therefore how complete the result is.
+   *
+   *  arp           — the neighbour table was readable. Sees every device with an
+   *                  IP, including ones that listen on nothing.
+   *  tcp-sweep     — no neighbour table (typically Android). Only finds devices
+   *                  with at least one open TCP port; cloud-only gear that
+   *                  listens on nothing is invisible.
+   *  protocol-only — neither was possible; only devices that answered mDNS,
+   *                  SSDP, miio or Broadlink appear.
+   */
+  hostDiscovery: 'arp' | 'tcp-sweep' | 'protocol-only';
 }
 
 /** Progress events streamed to the dashboard over WebSocket during a scan. */

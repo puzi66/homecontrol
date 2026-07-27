@@ -687,7 +687,13 @@ const STAGE_TEXT = {
   vendor: 'מזהה יצרנים…',
   wifi: 'מרכיב רשימת רשתות אלחוטיות…',
 };
-const STAGE_ORDER = ['probe', 'arp', 'miio', 'dns', 'ports', 'magichome', 'tuya', 'vendor', 'wifi'];
+const STAGE_ORDER = ['probe', 'arp', 'liveness', 'miio', 'dns', 'ports', 'magichome', 'tuya', 'vendor', 'wifi'];
+
+/** הסבר על שלמות התוצאה, לפי איך שנמצאו המארחים. */
+const HOST_DISCOVERY_NOTE = {
+  'tcp-sweep': 'אין טבלת ARP בפלטפורמה הזו — נסרקו רק מארחים עם פורט TCP פתוח. מכשירים שלא מקשיבים בכלל לא נמצאו.',
+  'protocol-only': 'לא ניתן היה לסרוק את תת-הרשת — מוצגים רק מכשירים שענו ל-mDNS, SSDP, miio או Broadlink.',
+};
 
 function logLine(msg, isErr = false) {
   const log = $('#scan-log');
@@ -748,6 +754,9 @@ function connectScanStream() {
       state.scanning = false;
       $('#scan-bar-fill').style.width = '100%';
       logLine(`הסתיים — ${msg.result.devices.length} מארחים תוך ${(msg.result.durationMs / 1000).toFixed(1)} שניות`);
+      // אם הגילוי היה חלקי, שיהיה כתוב במפורש ולא יוסק.
+      const note = HOST_DISCOVERY_NOTE[msg.result.hostDiscovery];
+      if (note) logLine(note, true);
       renderScanRows();
       renderDiscovered();
       renderWifi();
