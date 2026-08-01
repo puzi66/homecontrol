@@ -5,6 +5,7 @@ import { CONFIG, PATHS } from './config.js';
 import { engine } from './automations/engine.js';
 import { automations } from './automations/store.js';
 import type { Rule, Scene } from './automations/types.js';
+import { dhcpWatcher } from './discovery/dhcp.js';
 import { activeInterfaces } from './discovery/net.js';
 import { DriverError, deviceState, driverCatalogue, probeDevice, runCommand } from './drivers/index.js';
 import { callService, entitiesInDomains, haAvailable } from './ha/client.js';
@@ -421,6 +422,16 @@ export async function startServer(): Promise<FastifyInstance> {
   await registry.load();
   await seen.load();
   await automations.load();
+
+  // Passive, best-effort: devices name themselves when they boot or renew a
+  // lease, and that beats anything a scan can infer. Failing to bind port 67 is
+  // not fatal — it just means names come from scans alone.
+  dhcpWatcher.on('sighting', (sighting) => {
+    void seen.noteDhcp(sighting).catch((err) => {
+      log.warn(`could not record a DHCP sighting: ${(err as Error).message}`);
+    });
+  });
+  dhcpWatcher.start();
 
   const app = await buildServer();
   await app.listen({ port: CONFIG.port, host: CONFIG.host });

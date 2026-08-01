@@ -1,4 +1,5 @@
 import { engine } from './automations/engine.js';
+import { dhcpWatcher } from './discovery/dhcp.js';
 import { logger } from './logger.js';
 import { startServer } from './server.js';
 
@@ -10,6 +11,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     log.info(`${signal} received, shutting down`);
     engine.stop();
+    dhcpWatcher.stop();
     void app.close().then(() => process.exit(0));
   });
 }

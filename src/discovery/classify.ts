@@ -66,6 +66,36 @@ export function classify(input: ClassifyInput): Classification {
     if (mapped) return { kind: mapped, confidence: 'high', suggestedDriver: 'homekit' };
   }
 
+  // --- What the device called itself -------------------------------------
+  // A hostname the firmware chose is weaker than a HomeKit category but far
+  // stronger than a MAC prefix: "mova_vacuum_r2475a" settles a question that no
+  // amount of port scanning could. DHCP is usually where these come from.
+  const declared = `${host} ${String(ev['dhcpHostname'] ?? '')} ${String(ev['dhcpVendorClass'] ?? '')}`.toLowerCase();
+  const byName: [RegExp, DeviceKind][] = [
+    [/vacuum|robot|roborock|sweeper/, 'vacuum'],
+    [/\bcam\b|camera|ipc[-_]|doorbell/, 'camera'],
+    [/\btv\b|televis|chromecast|firestick|shield/, 'tv'],
+    [/speaker|soundbar|audio/, 'speaker'],
+    [/bulb|lamp|light|dimmer/, 'light'],
+    [/plug|socket|plugin|outlet/, 'plug'],
+    [/sensor|motion|\bpir\b|thermo/, 'sensor'],
+    [/printer/, 'printer'],
+  ];
+  for (const [pattern, kind] of byName) {
+    if (!pattern.test(declared)) continue;
+    // Naming itself settles *what* it is; the protocols it speaks still decide
+    // how to talk to it. A vacuum answering miio is still driveable.
+    const driver =
+      kind === 'vacuum' && ev['miioDeviceId'] !== undefined
+        ? 'mova'
+        : kind === 'light' && ports.has(5577)
+          ? 'magichome'
+          : ports.has(6668)
+            ? 'tuya'
+            : null;
+    return { kind, confidence: 'high', suggestedDriver: driver };
+  }
+
   // --- Robot vacuums -----------------------------------------------------
   // AltoBeam is Dreame's WiFi silicon and MOVA is Dreame's sub-brand, so an
   // AltoBeam device answering miio is a vacuum. Other miio responders fall

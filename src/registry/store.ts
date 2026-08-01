@@ -4,6 +4,7 @@ import { PATHS } from '../config.js';
 import { logger } from '../logger.js';
 import type { DiscoveredDevice, ScanResult } from '../discovery/types.js';
 import { displayNameFor } from '../discovery/classify.js';
+import { stripBom } from './seen.js';
 import { draftFromDiscovered, type AdoptRequest, type RegisteredDevice, type RegistryFile } from './types.js';
 
 const log = logger('registry');
@@ -26,7 +27,7 @@ export class DeviceRegistry {
     if (this.#loaded) return;
     try {
       const raw = await fs.readFile(PATHS.devices, 'utf8');
-      const parsed = JSON.parse(raw) as RegistryFile;
+      const parsed = JSON.parse(stripBom(raw)) as RegistryFile;
       if (parsed.version !== 1) throw new Error(`unsupported registry version ${parsed.version}`);
       this.#state = { ...structuredClone(EMPTY), ...parsed };
       log.info(`loaded ${this.#state.devices.length} device(s)`);

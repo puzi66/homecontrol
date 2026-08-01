@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { PATHS } from '../config.js';
 import { logger } from '../logger.js';
+import { stripBom } from '../registry/seen.js';
 import type { AutomationFile, LogEntry, Rule, Scene } from './types.js';
 
 const log = logger('automations');
@@ -30,7 +31,7 @@ export class AutomationStore {
     if (this.#loaded) return;
     try {
       const raw = await fs.readFile(FILE, 'utf8');
-      const parsed = JSON.parse(raw) as AutomationFile;
+      const parsed = JSON.parse(stripBom(raw)) as AutomationFile;
       if (parsed.version !== 1) throw new Error(`unsupported version ${parsed.version}`);
       this.#state = { ...structuredClone(EMPTY), ...parsed };
       log.info(`loaded ${this.#state.rules.length} rule(s), ${this.#state.scenes.length} scene(s)`);
