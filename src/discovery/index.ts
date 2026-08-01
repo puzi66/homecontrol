@@ -4,6 +4,7 @@ import { logger } from '../logger.js';
 import { pokeSubnet, readArpTable } from './arp.js';
 import { discoverBroadlink } from './broadlink.js';
 import { classify } from './classify.js';
+import { grabBanners } from './http-probe.js';
 import { discoverTuya } from './tuya.js';
 import { discoverMdns } from './mdns.js';
 import { discoverMiio, probeMiioBatch } from './miio.js';
@@ -125,6 +126,10 @@ export async function scanNetwork(options: ScanOptions = {}, onProgress?: Progre
     d.sources.add('mdns');
     d.hostname ??= r.name;
     d.services.push(...r.services);
+    // The device naming itself beats anything inferred from a MAC prefix.
+    if (r.friendlyName) d.evidence['friendlyName'] = r.friendlyName;
+    if (r.model) d.evidence['modelName'] = r.model;
+    if (r.category) d.evidence['homekitCategory'] = r.category;
     for (const [k, v] of Object.entries(r.txt)) d.evidence[`txt.${k}`] = v;
     for (const p of r.ports) if (!d.openPorts.includes(p)) d.openPorts.push(p);
   }
@@ -305,6 +310,46 @@ export async function scanNetwork(options: ScanOptions = {}, onProgress?: Progre
       if (r.productKey) d.evidence['tuyaProductKey'] = r.productKey;
       if (r.version) d.evidence['tuyaVersion'] = r.version;
     }
+  }
+
+  // --- Stage 4d: read what web interfaces say about themselves -----------
+  // Cheap and unusually effective: devices that reveal nothing over mDNS or
+  // SSDP often serve a page whose title or Server header names them outright.
+  const webHosts = [...drafts.values()]
+    .filter((d) => d.openPorts.some((p) => [80, 8080, 8081, 443, 8443].includes(p)))
+    .map((d) => ({ ip: d.ip, openPorts: d.openPorts }));
+
+  if (webHosts.length > 0) {
+    emit({ phase: 'stage', stage: 'http', message: `Reading ${webHosts.length} web interface(s)…` });
+    for (const [ip, banner] of await grabBanners(webHosts)) {
+      const d = draftFor(ip);
+      if (banner.title) d.evidence['httpTitle'] = banner.title;
+      if (banner.server) d.evidence['httpServer'] = banner.server;
+      if (banner.location) d.evidence['httpRedirect'] = banner.location;
+      if (banner.authRequired) d.evidence['httpAuthRequired'] = true;
+      // A page title is usually a better name than a reverse-DNS entry.
+      if (banner.title && !d.hostname) d.hostname = banner.title;
+    }
+  }
+
+  // --- Stage 4e: spot one machine appearing under several addresses ------
+  // A host with both wired and wireless interfaces shows up twice, under two
+  // MACs from two different vendors, and looks like two devices. Identical
+  // banners and an identical port set is a strong tell — worth flagging rather
+  // than leaving someone to wonder why they own two of something.
+  const fingerprints = new Map<string, string[]>();
+  for (const d of drafts.values()) {
+    const banner = [d.evidence['httpTitle'], d.evidence['httpServer']].filter(Boolean).join('|');
+    if (!banner || d.openPorts.length === 0) continue;
+    const key = `${banner}::${[...d.openPorts].sort((a, b) => a - b).join(',')}`;
+    fingerprints.set(key, [...(fingerprints.get(key) ?? []), d.ip]);
+  }
+  for (const ips of fingerprints.values()) {
+    if (ips.length < 2) continue;
+    for (const ip of ips) {
+      draftFor(ip).evidence['sameHostAs'] = ips.filter((other) => other !== ip).join(', ');
+    }
+    log.info(`${ips.join(' and ')} look like the same machine on different interfaces`);
   }
 
   // --- Stage 5: vendor lookup + classification ---------------------------

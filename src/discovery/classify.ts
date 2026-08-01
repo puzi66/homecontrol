@@ -32,11 +32,38 @@ export function classify(input: ClassifyInput): Classification {
   const ev = input.evidence;
 
   const hasService = (needle: string) => services.some((s) => s.includes(needle));
-  const model = String(ev['modelName'] ?? ev['ssdpServer'] ?? '').toLowerCase();
+
+  // Everything a device has said about itself, in one haystack: SSDP model,
+  // mDNS TXT model, and whatever its web interface put in the title or the
+  // Server header. Matching across all of them beats guessing from a MAC.
+  const model = [
+    ev['modelName'], ev['ssdpServer'], ev['httpTitle'], ev['httpServer'], ev['httpRedirect'],
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
 
   // --- Gateway -----------------------------------------------------------
+  // The one device that genuinely is the router.
   if (input.gateway && input.ip === input.gateway) {
     return { kind: 'router', confidence: 'high', suggestedDriver: null };
+  }
+
+  // --- The device saying what it is --------------------------------------
+  // A HomeKit accessory publishes its own category. Nothing we could infer
+  // from a MAC prefix or an open port comes close, so this goes first.
+  const homekit = String(ev['homekitCategory'] ?? '');
+  if (homekit) {
+    const byCategory: Record<string, DeviceKind> = {
+      lightbulb: 'light', outlet: 'plug', switch: 'plug', thermostat: 'thermostat',
+      sensor: 'sensor', camera: 'camera', 'video doorbell': 'camera', bridge: 'hub',
+      television: 'tv', 'tv set-top box': 'tv', 'tv stick': 'media', 'audio receiver': 'speaker',
+      fan: 'iot', 'air conditioner': 'thermostat', heater: 'thermostat',
+      'window covering': 'iot', 'door lock': 'iot', 'garage door': 'iot',
+      'security system': 'sensor', router: 'router', 'range extender': 'router',
+    };
+    const mapped = byCategory[homekit];
+    if (mapped) return { kind: mapped, confidence: 'high', suggestedDriver: 'homekit' };
   }
 
   // --- Robot vacuums -----------------------------------------------------
@@ -138,8 +165,17 @@ export function classify(input: ClassifyInput): Classification {
   }
 
   // --- Printers ----------------------------------------------------------
-  if (ports.has(631) || ports.has(9100) || hasService('_printer') || hasService('_ipp')) {
+  // Port 631 is CUPS, the printing *service* — every Linux desktop runs it. A
+  // host with SSH open is a computer that can print, not a printer, and calling
+  // it one is how a workstation ends up filed under hardware it merely talks to.
+  const printerPorts = ports.has(631) || ports.has(9100);
+  const looksLikeAComputer = ports.has(22) || ports.has(445) || ports.has(3389);
+
+  if ((printerPorts && !looksLikeAComputer) || hasService('_printer') || hasService('_ipp')) {
     return { kind: 'printer', confidence: 'high', suggestedDriver: null };
+  }
+  if (printerPorts && looksLikeAComputer) {
+    return { kind: 'computer', confidence: 'medium', suggestedDriver: null };
   }
 
   // --- Storage -----------------------------------------------------------
@@ -175,17 +211,42 @@ export function classify(input: ClassifyInput): Classification {
     return { kind: 'phone', confidence: 'low', suggestedDriver: null };
   }
 
-  // --- Routers and infrastructure ---------------------------------------
-  const netVendors = ['sagemcom', 'arcadyan', 'vantiva', 'technicolor', 'zyxel', 'tp-link', 'netgear', 'ubiquiti', 'mikrotik'];
+  // --- Networking hardware ----------------------------------------------
+  // Deliberately NOT 'router'. Exactly one device on a network is the router —
+  // the default gateway, handled at the top of this function. Everything else
+  // from a networking vendor is an extender, a set-top box, an access point or
+  // a smart plug that happens to use TP-Link silicon. Calling them all routers
+  // is how a home ends up appearing to have five of them.
+  const netVendors = [
+    'sagemcom', 'arcadyan', 'vantiva', 'technicolor', 'zyxel',
+    'tp-link', 'netgear', 'ubiquiti', 'mikrotik', 'wnc corporation',
+  ];
   if (netVendors.some((v) => vendor.includes(v))) {
-    return { kind: 'router', confidence: 'low', suggestedDriver: null };
+    return { kind: 'unknown', confidence: 'low', suggestedDriver: null };
   }
 
   return { kind: 'unknown', confidence: 'low', suggestedDriver: null };
 }
 
-/** Human-friendly fallback label when a device has no name of its own. */
-export function displayNameFor(device: Pick<DiscoveredDevice, 'hostname' | 'vendor' | 'kind' | 'ip'>): string {
+/**
+ * Human-friendly label for a device.
+ *
+ * Ordered by how much the source actually knows: a name the owner set, then a
+ * model the device published, then its hostname, and only then a guess built
+ * from the kind and vendor.
+ */
+export function displayNameFor(
+  device: Pick<DiscoveredDevice, 'hostname' | 'vendor' | 'kind' | 'ip'> & {
+    evidence?: Record<string, string | number | boolean>;
+  },
+): string {
+  const ev = device.evidence ?? {};
+  const friendly = ev['friendlyName'];
+  if (typeof friendly === 'string' && friendly.trim()) return friendly.trim();
+
+  const model = ev['modelName'] ?? ev['httpTitle'];
+  if (typeof model === 'string' && model.trim()) return model.trim();
+
   if (device.hostname) return device.hostname;
   const kindLabel: Record<DeviceKind, string> = {
     router: 'Router',

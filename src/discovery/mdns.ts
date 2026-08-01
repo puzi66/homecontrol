@@ -42,6 +42,12 @@ export interface MdnsRecord {
   ip: string;
   /** Instance or host name, e.g. "Kitchen speaker" or "hue-bridge.local". */
   name: string | null;
+  /** The name the owner gave the device, when it advertises one. */
+  friendlyName: string | null;
+  /** Model string, e.g. "Google Nest Hub" or "BSB002". */
+  model: string | null;
+  /** HomeKit accessory category, decoded from the `ci` TXT field. */
+  category: string | null;
   /** Service types this address answered for. */
   services: string[];
   /** Flattened TXT key/value pairs across all records from this address. */
@@ -49,6 +55,30 @@ export interface MdnsRecord {
   /** Ports advertised via SRV. */
   ports: number[];
 }
+
+/**
+ * HomeKit accessory categories from the `ci` TXT field.
+ *
+ * This is the most precise identification mDNS offers — the device states what
+ * it is rather than leaving it to be inferred from a MAC prefix.
+ */
+const HOMEKIT_CATEGORIES: Record<string, string> = {
+  '1': 'other', '2': 'bridge', '3': 'fan', '4': 'garage door', '5': 'lightbulb',
+  '6': 'door lock', '7': 'outlet', '8': 'switch', '9': 'thermostat', '10': 'sensor',
+  '11': 'security system', '12': 'door', '13': 'window', '14': 'window covering',
+  '15': 'programmable switch', '16': 'range extender', '17': 'camera',
+  '18': 'video doorbell', '19': 'air purifier', '20': 'heater', '21': 'air conditioner',
+  '22': 'humidifier', '23': 'dehumidifier', '28': 'sprinkler', '29': 'faucet',
+  '30': 'shower head', '31': 'television', '32': 'remote', '33': 'router',
+  '34': 'audio receiver', '35': 'tv set-top box', '36': 'tv stick',
+};
+
+/**
+ * TXT keys that carry a human-chosen name, most specific first.
+ * `fn` is what Chromecast and Nest devices publish — the name set in the app.
+ */
+const NAME_KEYS = ['fn', 'friendlyName', 'n', 'name'];
+const MODEL_KEYS = ['md', 'model', 'ty', 'mdl'];
 
 /**
  * Send mDNS queries on every local interface and collect answers for `listenMs`.
@@ -70,6 +100,9 @@ export async function discoverMdns(listenMs: number, localAddresses: string[]): 
     const entry = byIp.get(rinfo.address) ?? {
       ip: rinfo.address,
       name: null,
+      friendlyName: null,
+      model: null,
+      category: null,
       services: [],
       txt: {},
       ports: [],
@@ -81,13 +114,19 @@ export async function discoverMdns(listenMs: number, localAddresses: string[]): 
           const target = typeof rr.data === 'string' ? rr.data : '';
           // rr.name is the service type; rr.data is the instance name.
           if (rr.name.startsWith('_') && !entry.services.includes(rr.name)) entry.services.push(rr.name);
-          if (target && !entry.name) entry.name = prettyInstance(target);
+
+          // A PTR answering the `_services._dns-sd._udp` meta-query points at
+          // another *service type*, not an instance — using it as a name is how
+          // a Hue bridge ends up called "_hue._tcp".
+          if (target && !target.startsWith('_') && !entry.name) {
+            entry.name = prettyInstance(target);
+          }
           break;
         }
         case TYPE.SRV: {
           const srv = rr.data as { port?: number; target?: string } | undefined;
           if (srv?.port && !entry.ports.includes(srv.port)) entry.ports.push(srv.port);
-          if (!entry.name && rr.name) entry.name = prettyInstance(rr.name);
+          if (!entry.name && rr.name && !rr.name.startsWith('_')) entry.name = prettyInstance(rr.name);
           break;
         }
         case TYPE.TXT: {
@@ -96,7 +135,13 @@ export async function discoverMdns(listenMs: number, localAddresses: string[]): 
             if (eq <= 0) continue;
             const key = kv.slice(0, eq);
             const value = kv.slice(eq + 1);
-            if (value && !entry.txt[key]) entry.txt[key] = value;
+            if (!value || entry.txt[key]) continue;
+            entry.txt[key] = value;
+
+            // The device telling us its own name beats anything we can infer.
+            if (!entry.friendlyName && NAME_KEYS.includes(key)) entry.friendlyName = value;
+            if (!entry.model && MODEL_KEYS.includes(key)) entry.model = value;
+            if (!entry.category && key === 'ci') entry.category = HOMEKIT_CATEGORIES[value] ?? null;
           }
           break;
         }
@@ -153,7 +198,11 @@ export async function discoverMdns(listenMs: number, localAddresses: string[]): 
   }
   socket.close();
 
-  const results = [...byIp.values()].filter((r) => !localAddresses.includes(r.ip));
+  const results = [...byIp.values()]
+    .filter((r) => !localAddresses.includes(r.ip))
+    // A name the owner chose always beats an instance name derived from a MAC.
+    .map((r) => ({ ...r, name: r.friendlyName ?? r.name }));
+
   log.debug(`found ${results.length} mDNS responders`);
   return results;
 }

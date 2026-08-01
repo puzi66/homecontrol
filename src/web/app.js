@@ -683,11 +683,12 @@ const STAGE_TEXT = {
   dns: 'מתרגם שמות מארחים…',
   ports: 'לוקח טביעת אצבע של הפורטים…',
   magichome: 'בודק בקרי תאורה…',
+  http: 'קורא ממשקי ווב…',
   tuya: 'מאזין לשידורי Tuya (25 שניות)…',
   vendor: 'מזהה יצרנים…',
   wifi: 'מרכיב רשימת רשתות אלחוטיות…',
 };
-const STAGE_ORDER = ['probe', 'arp', 'liveness', 'miio', 'dns', 'ports', 'magichome', 'tuya', 'vendor', 'wifi'];
+const STAGE_ORDER = ['probe', 'arp', 'liveness', 'miio', 'dns', 'ports', 'magichome', 'http', 'tuya', 'vendor', 'wifi'];
 
 /** הסבר על שלמות התוצאה, לפי איך שנמצאו המארחים. */
 const HOST_DISCOVERY_NOTE = {
