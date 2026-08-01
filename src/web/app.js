@@ -304,11 +304,57 @@ function paintCard(card, device) {
     );
   }
 
-  const sw = card.querySelector('.switch');
+  const sw = card.querySelector('.card__actions .switch');
   if (sw) {
     sw.classList.toggle('is-on', active);
     sw.title = active ? 'כבה' : 'הדלק';
   }
+
+  paintChildren(card, device, live);
+}
+
+/**
+ * Render the individual things behind a hub — the bulbs on a Hue bridge, say.
+ *
+ * Driver-agnostic on purpose: a driver publishes `values.children`, each entry
+ * naming the command and argument key that switches it, so the dashboard needs
+ * no knowledge of any particular vendor.
+ */
+function paintChildren(card, device, live) {
+  const box = card.querySelector('.card__children');
+  if (!box) return;
+
+  const children = Array.isArray(live?.values?.children) ? live.values.children : [];
+  if (children.length === 0) {
+    box.replaceChildren();
+    return;
+  }
+
+  // Rebuild only when the set or its states changed, so this stays quiet on
+  // the twenty-second poll like everything else.
+  const signature = children.map((c) => `${c.id}:${c.on}:${c.reachable}`).join('|');
+  if (box.dataset.signature === signature) return;
+  box.dataset.signature = signature;
+
+  box.replaceChildren(
+    ...children.map((child) => {
+      const row = el('div', `child${child.reachable === false ? ' is-away' : ''}`);
+      row.append(el('span', 'child__name', child.name ?? child.id));
+
+      if (typeof child.brightness === 'number' && child.on) {
+        row.append(el('span', 'row__mid', `${Math.round((child.brightness / 254) * 100)}%`));
+      }
+
+      const toggle = el('button', `switch${child.on ? ' is-on' : ''}`);
+      toggle.title = child.on ? 'כבה' : 'הדלק';
+      toggle.onclick = () => {
+        if (!child.command) return;
+        fire(device.id, child.command, { [child.key ?? 'id']: child.id, on: !child.on }, toggle);
+      };
+      row.append(toggle);
+      return row;
+    }),
+  );
 }
 
 function deviceCard(device, index) {
@@ -333,7 +379,7 @@ function deviceCard(device, index) {
   gear.title = 'הגדרות';
   gear.onclick = () => openEditor(device);
   top.append(gear);
-  card.append(top, el('div', 'card__state'));
+  card.append(top, el('div', 'card__state'), el('div', 'card__children'));
 
   // פעולות
   const actions = el('div', 'card__actions');

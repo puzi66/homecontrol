@@ -387,6 +387,38 @@ body {
 .meter { flex: 1; height: 5px; border-radius: 99px; background: var(--panel-3); overflow: hidden; }
 .meter i { display: block; height: 100%; border-radius: 99px; background: var(--accent); transition: width 0.4s var(--ease); }
 
+/* ── ילדי רכזת (נורות מאחורי גשר, וכדומה) ─────────────────────────── */
+
+.card__children {
+  display: flex; flex-direction: column; gap: 1px;
+  margin: 0 -4px;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.card__children:empty { display: none; }
+
+.child {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 9px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 13px;
+}
+.child:hover { background: rgba(255, 255, 255, 0.06); }
+.child__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Unreachable is worth showing rather than hiding: the bulb is switched off at
+   the wall, and a toggle that silently does nothing is worse than a greyed one. */
+.child.is-away { opacity: 0.45; }
+.child.is-away .child__name::after {
+  content: ' · לא נגישה';
+  font-size: 11px;
+  color: var(--dimmer);
+}
+
+.child .switch { width: 38px; height: 21px; }
+.child .switch::after { width: 15px; height: 15px; }
+.child .switch.is-on::after { transform: translateX(-17px); }
+
 /* פעולות מהירות */
 .card__actions {
   display: flex; align-items: center; gap: 7px; flex-wrap: wrap;

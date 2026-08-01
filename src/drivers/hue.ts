@@ -73,12 +73,20 @@ export const hueDriver: Driver = {
       values: {
         lightCount: entries.length,
         onCount: on,
-        lights: entries.map(([id, l]) => ({
+        /**
+         * Individual lights, under the generic `children` key the dashboard
+         * looks for. A bridge is a hub, and a hub that only reports a summary
+         * hides the things you actually want to switch.
+         */
+        children: entries.map(([id, l]) => ({
           id,
           name: l.name,
           on: l.state.on,
           brightness: l.state.bri ?? null,
           reachable: l.state.reachable,
+          /** Which command toggles this child, so the UI needs no Hue-specific code. */
+          command: 'setLight',
+          key: 'light',
         })),
       },
     };
