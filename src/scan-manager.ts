@@ -56,8 +56,24 @@ class ScanManager extends EventEmitter {
     this.#running = (async () => {
       try {
         const result = await scanNetwork(options, (event) => {
-          this.#progressLog.push(event);
-          this.emit('progress', event);
+          // The orchestrator knows nothing about the registry, so it reports
+          // every device as unadopted. Both the streamed devices and the final
+          // result need fixing before they go out: the `done` event is emitted
+          // from inside the scan, which is before this function gets the result
+          // back and can annotate it. Miss either and the "hide adopted" filter
+          // has nothing to act on.
+          let annotated: ScanProgress = event;
+          if (event.phase === 'device') {
+            annotated = { ...event, device: registry.annotate([event.device])[0]! };
+          } else if (event.phase === 'done') {
+            annotated = {
+              ...event,
+              result: { ...event.result, devices: registry.annotate(event.result.devices) },
+            };
+          }
+
+          this.#progressLog.push(annotated);
+          this.emit('progress', annotated);
         });
 
         // Adopted devices learn their new address here; unseen ones go offline.

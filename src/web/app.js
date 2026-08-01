@@ -675,7 +675,9 @@ function discoveredRow(device, index) {
     row.append(el('span', 'tag', 'נוסף'));
   } else {
     const b = el('button', 'qa qa--primary', '＋ הוסף');
-    b.style.setProperty('--accent', meta.accent);
+    // The row already carries the kind's colour on its icon. Tinting the action
+    // button too made it look like the colour meant something about the button.
+    b.style.setProperty('--accent', 'var(--gold)');
     b.onclick = () => adopt(device, b);
     row.append(b);
   }
@@ -811,10 +813,20 @@ function renderScanRows() {
   box.append(rows);
 }
 
+/**
+ * Open the sheet without starting anything.
+ *
+ * The scan used to begin the moment the button was pressed, which put the
+ * options — deep scan in particular — behind a sweep that was already running.
+ * Choosing how to scan has to come before scanning.
+ */
 function openScan() {
-  $('#scan-log').replaceChildren();
-  $('#scan-bar-fill').style.width = '0%';
   $('#scan-overlay').hidden = false;
+  $('#scan-start').disabled = state.scanning;
+  $('#scan-start').textContent = state.discovered.length > 0 ? 'סרוק שוב' : 'התחל סריקה';
+  $('#scan-sub').textContent = state.scanning
+    ? 'סריקה פעילה…'
+    : 'בחרו אפשרויות ולחצו התחל. סריקה רגילה לוקחת כחצי דקה.';
   renderScanRows();
 }
 
@@ -851,6 +863,9 @@ function connectScanStream() {
       state.wifi = msg.result.wifiNetworks;
       state.scanning = false;
       $('#scan-bar-fill').style.width = '100%';
+      $('#scan-start').disabled = false;
+      $('#scan-start').textContent = 'סרוק שוב';
+      $('#scan-sub').textContent = 'בחרו אפשרויות ולחצו סרוק שוב כדי לרענן.';
       logLine(`הסתיים — ${msg.result.devices.length} מארחים תוך ${(msg.result.durationMs / 1000).toFixed(1)} שניות`);
       // אם הגילוי היה חלקי, שיהיה כתוב במפורש ולא יוסק.
       const note = HOST_DISCOVERY_NOTE[msg.result.hostDiscovery];
@@ -871,18 +886,28 @@ function connectScanStream() {
 }
 
 async function startScan() {
-  if (state.scanning) { openScan(); return; }
+  if (state.scanning) return;
+
   const deep = $('#scan-deep').checked;
   state.scanning = true;
   state.discovered = [];
   renderHeader();
-  openScan();
+
+  $('#scan-log').replaceChildren();
+  $('#scan-bar-fill').style.width = '0%';
+  $('#scan-overlay').hidden = false;
+  $('#scan-start').disabled = true;
+  $('#scan-sub').textContent = deep ? 'סריקה מעמיקה פעילה…' : 'סריקה פעילה…';
+  renderScanRows();
+
   logLine(deep ? 'מתחיל סריקה מעמיקה…' : 'מתחיל סריקה…');
   connectScanStream();
+
   try {
     await api('/api/scan', { method: 'POST', body: { deep } });
   } catch (err) {
     state.scanning = false;
+    $('#scan-start').disabled = false;
     renderHeader();
     logLine(err.message, true);
   }
@@ -1518,10 +1543,11 @@ function connectEvents() {
 }
 
 async function boot() {
-  $('#scan-btn').onclick = startScan;
+  // Opening the sheet and starting a sweep are now separate acts.
+  $('#scan-btn').onclick = openScan;
+  $('#scan-start').onclick = startScan;
   $('#scan-close').onclick = closeScan;
   $('#scan-done').onclick = closeScan;
-  $('#scan-rescan').onclick = startScan;
   $('#scan-onlynew').onchange = renderScanRows;
 
   $('#edit-close').onclick = () => { $('#edit-overlay').hidden = true; state.editing = null; };

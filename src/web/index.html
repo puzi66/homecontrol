@@ -143,7 +143,7 @@
 <div class="overlay" id="scan-overlay" hidden>
   <div class="sheet">
     <header class="sheet__head">
-      <div><h2>סריקת רשת</h2><p>מחפש כל מכשיר בתת-הרשתות המקומיות.</p></div>
+      <div><h2>סריקת רשת</h2><p id="scan-sub">בחרו אפשרויות ולחצו התחל.</p></div>
       <button class="x" id="scan-close" aria-label="סגור">✕</button>
     </header>
     <div class="scanbar"><span id="scan-bar-fill"></span></div>
@@ -151,14 +151,17 @@
     <div class="sheet__body">
       <div class="sheet__toolbar">
         <span id="scan-count">0 נמצאו</span>
-        <label class="switchlbl"><input type="checkbox" id="scan-deep" /><span>סריקה מעמיקה</span></label>
-        <label class="switchlbl"><input type="checkbox" id="scan-onlynew" checked /><span>הסתר שנוספו</span></label>
+        <label class="switchlbl" title="מאזין 25 שניות נוספות לשידורי Tuya, ומגלה מזהה מכשיר ומפתח מוצר">
+          <input type="checkbox" id="scan-deep" /><span>סריקה מעמיקה</span>
+        </label>
+        <label class="switchlbl"><input type="checkbox" id="scan-onlynew" checked /><span>הצג רק חדשים</span></label>
       </div>
       <div id="scan-rows"></div>
     </div>
     <footer class="sheet__foot">
-      <button class="ghost" id="scan-rescan">סרוק שוב</button>
-      <button class="primary" id="scan-done">סיום</button>
+      <button class="ghost" id="scan-done">סגור</button>
+      <span class="grow"></span>
+      <button class="primary" id="scan-start">התחל סריקה</button>
     </footer>
   </div>
 </div>
