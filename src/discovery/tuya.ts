@@ -36,23 +36,15 @@ export interface TuyaRecord {
   raw: Record<string, unknown>;
 }
 
-/** Pull the JSON body out of a Tuya frame, decrypting when necessary. */
-function parseFrame(buf: Buffer): Record<string, unknown> | null {
-  if (buf.length < 20) return null;
-  if (buf.readUInt32BE(0) !== PREFIX) return null;
-
-  const payloadLength = buf.readUInt32BE(12);
-  if (payloadLength < 4 || 16 + payloadLength > buf.length) return null;
-
-  // Trailing 8 bytes of the declared length are the CRC and the suffix.
-  let payload = buf.subarray(16, 16 + payloadLength - 8);
-
-  // Protocol 3.3 prepends a 15-byte version header before the ciphertext.
-  if (payload.length > 15 && payload.subarray(0, 3).toString('ascii') === '3.3') {
-    payload = payload.subarray(15);
+/** Read a JSON object out of a buffer, plain or AES-ECB encrypted. */
+function decodeBody(slice: Buffer): Record<string, unknown> | null {
+  // Protocol 3.x prepends a 15-byte version header before the ciphertext.
+  let body = slice;
+  if (body.length > 15 && /^3\.\d$/.test(body.subarray(0, 3).toString('latin1'))) {
+    body = body.subarray(15);
   }
 
-  const asText = payload.toString('utf8');
+  const asText = body.toString('utf8');
   const braceAt = asText.indexOf('{');
   if (braceAt >= 0) {
     try {
@@ -62,17 +54,48 @@ function parseFrame(buf: Buffer): Record<string, unknown> | null {
     }
   }
 
-  // AES-128-ECB with the well-known broadcast key.
-  if (payload.length % 16 !== 0) return null;
+  if (body.length === 0 || body.length % 16 !== 0) return null;
   try {
     const decipher = crypto.createDecipheriv('aes-128-ecb', UDP_KEY, null);
-    const plain = Buffer.concat([decipher.update(payload), decipher.final()]).toString('utf8');
+    const plain = Buffer.concat([decipher.update(body), decipher.final()]).toString('utf8');
     const at = plain.indexOf('{');
-    if (at < 0) return null;
-    return JSON.parse(plain.slice(at)) as Record<string, unknown>;
+    return at < 0 ? null : (JSON.parse(plain.slice(at)) as Record<string, unknown>);
   } catch {
     return null;
   }
+}
+
+/**
+ * Pull the JSON body out of a Tuya frame.
+ *
+ * The framing is not fixed. After the 16-byte header some frames carry a 4-byte
+ * return code before the ciphertext, and the trailer is either CRC32 plus the
+ * suffix (8 bytes) or, from protocol 3.4, an HMAC-SHA256 plus the suffix (36).
+ * Assuming one layout silently drops every device using another — measured on
+ * real hardware, all four devices on the network were being rejected because
+ * their payload carried a return code, leaving a ciphertext length that was not
+ * a multiple of the AES block size.
+ *
+ * So rather than guess, try the plausible windows and keep whichever decodes.
+ */
+function parseFrame(buf: Buffer): Record<string, unknown> | null {
+  if (buf.length < 24) return null;
+  if (buf.readUInt32BE(0) !== PREFIX) return null;
+
+  const declared = buf.readUInt32BE(12);
+  const end = Math.min(16 + declared, buf.length);
+
+  for (const returnCode of [4, 0]) {
+    for (const trailer of [8, 36]) {
+      const start = 16 + returnCode;
+      const stop = end - trailer;
+      if (stop - start < 16) continue;
+
+      const decoded = decodeBody(buf.subarray(start, stop));
+      if (decoded) return decoded;
+    }
+  }
+  return null;
 }
 
 function toRecord(ip: string, data: Record<string, unknown>): TuyaRecord {
