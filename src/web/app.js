@@ -71,6 +71,8 @@ const SCENE_ICONS = ['✨', '🌙', '☀️', '🎬', '🎵', '🧹', '🏠', '�
 const state = {
   devices: [], rooms: [], discovered: [], wifi: [],
   states: new Map(), sun: {},
+  /** deviceId -> { card, device }, so state updates can patch instead of rebuild. */
+  cards: new Map(),
   rules: [], scenes: [], log: [], drivers: [],
   view: 'home', roomFilter: null, discFilter: 'new', netTab: 'found',
   scanning: false, editing: null, socket: null, eventSocket: null,
@@ -270,13 +272,50 @@ async function fire(deviceId, cmd, args, button) {
   }
 }
 
-function deviceCard(device, index) {
-  const meta = kindOf(device.kind);
+const isOn = (device, live) => !!(live && DRIVER_UI[device.driver]?.active?.(live));
+
+/**
+ * Update only the parts of a card that change with device state.
+ *
+ * Deliberately not a rebuild. State arrives every twenty seconds, and
+ * re-creating the grid each time restarts every card's entry animation — which
+ * reads as the page flickering on its own.
+ */
+function paintCard(card, device) {
   const live = state.states.get(device.id);
   const ui = DRIVER_UI[device.driver];
-  const isActive = !!(live && ui?.active?.(live));
+  const active = isOn(device, live);
 
-  const card = el('article', `card${device.online ? '' : ' is-offline'}${isActive ? ' is-active' : ''}`);
+  card.classList.toggle('is-active', active);
+  card.classList.toggle('is-offline', !device.online);
+
+  const row = card.querySelector('.card__state');
+  row.classList.toggle('card__state--err', Boolean(live?.error));
+
+  if (live?.error) {
+    row.replaceChildren(live.error.length > 92 ? `${live.error.slice(0, 92)}…` : live.error);
+  } else if (live) {
+    const widget = ui?.widget?.(live);
+    const text = el('span', '', live.summary || '—');
+    row.replaceChildren(...(widget ? [widget, text] : [text]));
+  } else {
+    row.replaceChildren(
+      el('span', '', device.driver ? 'קורא מצב…' : device.online ? 'מחובר · ניטור בלבד' : 'לא מחובר'),
+    );
+  }
+
+  const sw = card.querySelector('.switch');
+  if (sw) {
+    sw.classList.toggle('is-on', active);
+    sw.title = active ? 'כבה' : 'הדלק';
+  }
+}
+
+function deviceCard(device, index) {
+  const meta = kindOf(device.kind);
+  const ui = DRIVER_UI[device.driver];
+
+  const card = el('article', 'card');
   card.style.setProperty('--accent', meta.accent);
   card.style.setProperty('--i', String(index));
 
@@ -294,30 +333,18 @@ function deviceCard(device, index) {
   gear.title = 'הגדרות';
   gear.onclick = () => openEditor(device);
   top.append(gear);
-  card.append(top);
-
-  // מצב חי
-  const row = el('div', 'card__state');
-  if (live?.error) {
-    row.classList.add('card__state--err');
-    row.textContent = live.error.length > 92 ? `${live.error.slice(0, 92)}…` : live.error;
-  } else if (live) {
-    const w = ui?.widget?.(live);
-    if (w) row.append(w);
-    row.append(el('span', '', live.summary || '—'));
-  } else if (device.driver) {
-    row.append(el('span', '', 'קורא מצב…'));
-  } else {
-    row.append(el('span', '', device.online ? 'מחובר · ניטור בלבד' : 'לא מחובר'));
-  }
-  card.append(row);
+  card.append(top, el('div', 'card__state'));
 
   // פעולות
   const actions = el('div', 'card__actions');
   if (ui?.toggle) {
-    const sw = el('button', `switch${isActive ? ' is-on' : ''}`);
-    sw.title = isActive ? 'כבה' : 'הדלק';
-    sw.onclick = () => fire(device.id, isActive ? ui.toggle.off : ui.toggle.on, {}, sw);
+    const sw = el('button', 'switch');
+    // Reads the current state at click time rather than capturing it, so the
+    // handler stays correct however long the card has been on screen.
+    sw.onclick = () => {
+      const on = isOn(device, state.states.get(device.id));
+      fire(device.id, on ? ui.toggle.off : ui.toggle.on, {}, sw);
+    };
     actions.append(sw);
   }
   for (const b of ui?.buttons ?? []) {
@@ -334,12 +361,20 @@ function deviceCard(device, index) {
   actions.append(elLtr('span', 'qa__ip', device.ip));
   card.append(actions);
 
+  paintCard(card, device);
+  state.cards.set(device.id, { card, device });
   return card;
+}
+
+/** Repaint every card in place. No DOM is destroyed, so nothing re-animates. */
+function paintDeviceStates() {
+  for (const { card, device } of state.cards.values()) paintCard(card, device);
 }
 
 function renderDevices() {
   const body = $('#devices-body');
   body.replaceChildren();
+  state.cards.clear();
 
   const visible = state.roomFilter === null
     ? state.devices
@@ -838,8 +873,9 @@ function openEditor(device) {
     if (d.id === device.driver) o.selected = true;
     drvSel.append(o);
   }
-  drvSel.onchange = renderDriverConfig;
+  drvSel.onchange = () => { renderDriverConfig(); renderDriverCommands(); };
   renderDriverConfig();
+  renderDriverCommands();
 
   const dl = $('#room-options');
   dl.replaceChildren();
@@ -877,6 +913,87 @@ function openEditor(device) {
 
   $('#edit-overlay').hidden = false;
   $('#edit-name').focus();
+}
+
+/**
+ * Every command the assigned driver exposes, runnable from here.
+ *
+ * Some commands are the only way to complete setup — Hue pairing, reading a
+ * Switcher's device id — so leaving them reachable only over the API meant
+ * setup could not actually be finished in the interface that asks for it.
+ */
+function renderDriverCommands() {
+  const wrap = $('#edit-commands-wrap');
+  const box = $('#edit-commands');
+  const out = $('#edit-cmd-out');
+  box.replaceChildren();
+  out.hidden = true;
+
+  const driver = state.drivers.find((d) => d.id === $('#edit-driver').value);
+  const device = state.editing;
+  if (!driver?.commands?.length || !device) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+
+  for (const cmd of driver.commands) {
+    const row = el('div', 'cmdrow');
+    row.append(el('b', '', cmd.label ?? cmd.name));
+
+    const inputs = new Map();
+    for (const p of cmd.params ?? []) {
+      const input = el('input');
+      input.type = p.type === 'number' ? 'number' : 'text';
+      input.placeholder = p.label;
+      input.title = p.label;
+      if (p.type === 'boolean') input.placeholder = 'true / false';
+      inputs.set(p.key, { input, type: p.type });
+      row.append(input);
+    }
+
+    const run = el('button', 'qa', '▶ הרץ');
+    run.type = 'button';
+    run.onclick = async () => {
+      const args = {};
+      for (const [key, { input, type }] of inputs) {
+        const raw = input.value.trim();
+        if (!raw) continue;
+        args[key] = type === 'number' ? Number(raw) : type === 'boolean' ? raw === 'true' : raw;
+      }
+
+      run.disabled = true;
+      run.textContent = '…';
+      try {
+        const res = await api(`/api/devices/${encodeURIComponent(device.id)}/command`, {
+          method: 'POST',
+          body: { command: cmd.name, args },
+        });
+        out.hidden = false;
+        out.classList.remove('is-err');
+        out.textContent = JSON.stringify(res.result ?? res, null, 2);
+        toast(`${cmd.label ?? cmd.name} — בוצע`);
+        // A command may have stored config (a Hue username, a Switcher id).
+        await loadDevices();
+        const fresh = state.devices.find((d) => d.id === device.id);
+        if (fresh) {
+          state.editing = fresh;
+          renderDriverConfig();
+        }
+        void refreshStates();
+      } catch (err) {
+        out.hidden = false;
+        out.classList.add('is-err');
+        out.textContent = err.message;
+      } finally {
+        run.disabled = false;
+        run.textContent = '▶ הרץ';
+      }
+    };
+
+    row.append(run);
+    box.append(row);
+  }
 }
 
 /** שדות ההגדרה שהדרייבר הנבחר דורש, למשל טוקן או שם משתמש. */
@@ -1318,7 +1435,10 @@ async function loadAutomations() {
 function applyStates(payload) {
   state.states = new Map((payload.states ?? []).map((s) => [s.deviceId, s]));
   if (payload.sun) state.sun = payload.sun;
-  renderDevices();
+
+  // Only the live values changed, never the set of devices — that comes from
+  // loadDevices. So patch the existing cards rather than rebuilding the grid.
+  paintDeviceStates();
   renderHeader();
 }
 

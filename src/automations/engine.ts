@@ -81,6 +81,8 @@ class AutomationEngine extends EventEmitter {
   #firedKeys = new Set<string>();
   /** Rules currently executing, so a slow run cannot overlap itself. */
   #running = new Set<string>();
+  /** Last state snapshot pushed to clients, to suppress no-op updates. */
+  #lastEmitted = '';
   #startedAt = Date.now();
 
   states(): CachedState[] {
@@ -156,7 +158,17 @@ class AutomationEngine extends EventEmitter {
       }),
     );
 
-    this.emit('states', this.states());
+    // Only wake the dashboard when something actually moved. Devices are idle
+    // most of the time, so a poll that changed nothing has nothing to say —
+    // and a client that is told anyway has to decide what to do about it.
+    const fingerprint = JSON.stringify(
+      this.states().map((s) => [s.deviceId, s.online, s.summary, s.error]),
+    );
+    if (fingerprint !== this.#lastEmitted) {
+      this.#lastEmitted = fingerprint;
+      this.emit('states', this.states());
+    }
+
     await this.checkStateTriggers();
   }
 
