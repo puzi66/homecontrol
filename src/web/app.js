@@ -61,6 +61,28 @@ const DRIVER_UI = {
     active: (s) => (s.values?.onCount ?? 0) > 0,
     toggle: { on: 'allOn', off: 'allOff' },
   },
+  switcher: {
+    active: (s) => !!s.values?.on,
+    toggle: { on: 'on', off: 'off' },
+    buttons: [{ label: '⏱ שעה', cmd: 'onForMinutes', args: { minutes: 60 }, title: 'הדלק לשעה' }],
+    widget: (s) => (s.values?.watts ? meter(s.values.watts, 3000) : null),
+  },
+  tuya: {
+    active: (s) => s.values?.on === true,
+    toggle: { on: 'on', off: 'off' },
+    widget: (s) => (s.values?.watts ? meter(s.values.watts, 2500) : null),
+  },
+  cast: {
+    // `active` comes from the driver, which already treats the ambient
+    // screensaver as idle rather than as something playing.
+    active: (s) => !!s.values?.active,
+    buttons: [
+      { label: '▶', cmd: 'play', title: 'נגן' },
+      { label: '⏸', cmd: 'pause', title: 'השהה' },
+      { label: '🔇', cmd: 'mute', args: { muted: true }, title: 'השתק' },
+    ],
+    widget: (s) => meter(s.values?.volume, 100),
+  },
 };
 
 const DAY_SHORT = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];

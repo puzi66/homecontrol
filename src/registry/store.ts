@@ -67,9 +67,22 @@ export class DeviceRegistry {
     return this.#state.lastScanAt;
   }
 
-  /** Adopt a device, or update it in place if the id is already registered. */
+  /** Adopt a device, or update it in place if it is already registered. */
   async adopt(req: AdoptRequest, discovered?: DiscoveredDevice): Promise<RegisteredDevice> {
-    const id = req.id ?? discovered?.id ?? (req.mac ? req.mac.toLowerCase() : `ip:${req.ip}`);
+    const proposed = req.id ?? discovered?.id ?? (req.mac ? req.mac.toLowerCase() : `ip:${req.ip}`);
+    const mac = (req.mac ?? discovered?.mac)?.toLowerCase() ?? null;
+
+    // Match an existing entry before minting a new id. The same device adopted
+    // once before its MAC was known and again afterwards would otherwise become
+    // two registrations of one thing — one keyed `ip:x`, one keyed by MAC.
+    const already = this.#state.devices.find(
+      (d) =>
+        d.id === proposed ||
+        (mac !== null && d.mac?.toLowerCase() === mac) ||
+        (d.ip === req.ip && (d.id.startsWith('ip:') || proposed.startsWith('ip:'))),
+    );
+
+    const id = already?.id ?? proposed;
     const now = new Date().toISOString();
 
     const existingIndex = this.#state.devices.findIndex((d) => d.id === id);
@@ -167,6 +180,8 @@ export class DeviceRegistry {
     const byId = new Map(scan.devices.map((d) => [d.id, d]));
     const now = new Date().toISOString();
 
+    let adopted = 0;
+
     for (const device of this.#state.devices) {
       const seen = byId.get(device.id);
       if (seen) {
@@ -176,13 +191,74 @@ export class DeviceRegistry {
         device.discovery = { openPorts: seen.openPorts, evidence: seen.evidence, sources: seen.sources };
         device.lastSeen = now;
         device.online = true;
+
+        // Discovery already worked out how to talk to this thing. Making someone
+        // pick the driver by hand when the scan knows the answer is a chore with
+        // no decision in it — and devices adopted before a driver existed would
+        // otherwise stay inert forever.
+        if (!device.driver && seen.suggestedDriver) {
+          device.driver = seen.suggestedDriver;
+          device.updatedAt = now;
+          adopted += 1;
+          log.info(`assigned the ${seen.suggestedDriver} driver to ${device.name}`);
+        }
       } else {
         device.online = false;
       }
     }
 
+    if (adopted > 0) log.info(`auto-assigned ${adopted} driver(s) from the scan`);
+
+    await this.#healDuplicates(scan);
+
     this.#state.lastScanAt = scan.finishedAt;
     await this.#persist();
+  }
+
+  /**
+   * Collapse entries that turned out to be the same device.
+   *
+   * A device adopted before any scan knew its MAC gets keyed `ip:x`. Once a
+   * sweep supplies the MAC it should move to that stable identity — and if a
+   * MAC-keyed entry already exists, the two are one device and must be merged
+   * rather than left side by side. The MAC survives because an address moves
+   * and a MAC does not.
+   */
+  async #healDuplicates(scan: ScanResult): Promise<void> {
+    const macByIp = new Map(scan.devices.filter((d) => d.mac).map((d) => [d.ip, d.mac!.toLowerCase()]));
+    let merged = 0;
+
+    for (const stale of this.#state.devices.filter((d) => d.id.startsWith('ip:'))) {
+      const mac = macByIp.get(stale.ip);
+      if (!mac) continue;
+
+      const twin = this.#state.devices.find((d) => d.id !== stale.id && d.mac?.toLowerCase() === mac);
+
+      if (twin) {
+        // Keep whichever side was actually configured; a driver with settings
+        // took someone effort, an empty one did not.
+        const configured = Object.keys(stale.driverConfig).length > 0 ? stale : twin;
+        const other = configured === stale ? twin : stale;
+
+        twin.name = configured.name;
+        twin.room = configured.room ?? other.room;
+        twin.driver = configured.driver ?? other.driver;
+        twin.driverConfig = { ...other.driverConfig, ...configured.driverConfig };
+        twin.notes = configured.notes ?? other.notes;
+        twin.kind = configured.kind !== 'unknown' ? configured.kind : other.kind;
+        twin.updatedAt = new Date().toISOString();
+
+        this.#state.devices = this.#state.devices.filter((d) => d.id !== stale.id);
+        log.info(`merged duplicate registrations for ${twin.name} (${stale.id} into ${twin.id})`);
+      } else {
+        stale.id = mac;
+        stale.mac = mac;
+        log.info(`re-keyed ${stale.name} from an address to its MAC`);
+      }
+      merged += 1;
+    }
+
+    if (merged > 0) log.info(`resolved ${merged} duplicate or address-keyed registration(s)`);
   }
 
   /** Tag scan results with whether we already know about each device. */
