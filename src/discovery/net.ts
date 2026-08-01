@@ -131,6 +131,7 @@ export async function activeInterfaces(): Promise<NetworkInterfaceInfo[]> {
       out.push({
         name,
         address: a.address,
+        mac: normaliseMac(a.mac),
         netmask: a.netmask,
         cidr,
         hostCount: hostCountForPrefix(prefix),

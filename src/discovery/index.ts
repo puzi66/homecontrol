@@ -1,4 +1,5 @@
 import dns from 'node:dns/promises';
+import os from 'node:os';
 import { CONFIG } from '../config.js';
 import { logger } from '../logger.js';
 import { pokeSubnet, readArpTable } from './arp.js';
@@ -215,6 +216,22 @@ export async function scanNetwork(options: ScanOptions = {}, onProgress?: Progre
     } else {
       hostDiscovery = 'protocol-only';
     }
+  }
+
+  // --- Stage 2c: this machine -------------------------------------------
+  // A host does not ARP for itself, and the mDNS and SSDP listeners filter out
+  // their own addresses so they do not discover the scanner as a device. Between
+  // them that leaves the machine running all of this as the one thing missing
+  // from its own map — which is wrong, and confusing to anyone reading the list.
+  for (const iface of interfaces) {
+    if (!inScope(iface.address)) continue;
+
+    const d = draftFor(iface.address);
+    d.mac ??= iface.mac;
+    d.sources.add('self');
+    d.evidence['isThisMachine'] = true;
+    d.evidence['interface'] = iface.name;
+    d.hostname ??= os.hostname();
   }
 
   log.info(`${drafts.size} host(s) seen via ${hostDiscovery}`);

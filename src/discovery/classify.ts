@@ -43,6 +43,12 @@ export function classify(input: ClassifyInput): Classification {
     .join(' ')
     .toLowerCase();
 
+  // --- This machine ------------------------------------------------------
+  // No inference needed: it is the host running all of this.
+  if (ev['isThisMachine'] === true) {
+    return { kind: 'computer', confidence: 'high', suggestedDriver: null };
+  }
+
   // --- Gateway -----------------------------------------------------------
   // The one device that genuinely is the router.
   if (input.gateway && input.ip === input.gateway) {

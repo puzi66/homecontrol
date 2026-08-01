@@ -9,6 +9,8 @@ export type DiscoverySource =
   | 'tuya'       // broadcast a Tuya announcement
   | 'tcp'        // had at least one open TCP port
   | 'dns'        // resolved to a hostname
+  | 'self'       // this machine, which cannot discover itself any other way
+  | 'dhcp'       // named itself in a DHCP request
   | 'manual';    // typed in by the user
 
 /**
@@ -82,6 +84,8 @@ export interface WifiNetwork {
 export interface NetworkInterfaceInfo {
   name: string;
   address: string;
+  /** The adapter's own hardware address, so this machine can appear in results. */
+  mac: string | null;
   netmask: string;
   cidr: string;
   /** Number of usable host addresses in this subnet. */
