@@ -50,11 +50,45 @@ async function soap(
   });
 
   const text = await res.text();
-  if (!res.ok) {
-    const fault = text.match(/<errorDescription>([^<]*)<\/errorDescription>/i)?.[1];
-    throw new DriverError(`Sonos ${action} failed: ${fault ?? res.status}`, 502);
-  }
+  if (!res.ok) throw faultToError(action, text, res.status);
   return text;
+}
+
+/**
+ * UPnP error codes Sonos actually returns, with what they mean in practice.
+ *
+ * Worth mapping rather than surfacing the bare HTTP 500: every one of these
+ * comes back as a 500, so without the code the message says nothing at all. 701
+ * in particular is not a failure so much as "you asked me to resume, and there
+ * is nothing loaded".
+ */
+const UPNP_ERRORS: Record<string, string> = {
+  '401': 'הפעולה לא נתמכת ברמקול הזה',
+  '402': 'פרמטרים שגויים',
+  '501': 'הרמקול דחה את הפעולה',
+  '600': 'ערך לא חוקי',
+  '701': 'אין מה לנגן — תור ההשמעה ריק. בחרו משהו באפליקציית Sonos, או השתמשו ב"נגן כתובת" לתחנת רדיו.',
+  '702': 'אין תוכן',
+  '704': 'סוג הקובץ לא נתמך',
+  '705': 'ההשמעה נעולה כרגע',
+  '711': 'יעד דילוג לא חוקי',
+  '712': 'מהירות ההשמעה לא נתמכת',
+  '714': 'סוג המדיה לא נתמך',
+  '715': 'התוכן תפוס',
+  '718': 'הרמקול מקובץ ואינו המוביל — שלחו את הפקודה לרמקול הראשי בקבוצה',
+};
+
+function faultToError(action: string, xml: string, status: number): DriverError {
+  const code = xml.match(/<errorCode>(\d+)<\/errorCode>/i)?.[1];
+  const described = xml.match(/<errorDescription>([^<]*)<\/errorDescription>/i)?.[1];
+
+  if (code && UPNP_ERRORS[code]) {
+    return new DriverError(UPNP_ERRORS[code], code === '701' || code === '702' ? 409 : 502);
+  }
+  return new DriverError(
+    `Sonos ${action} נכשל: ${described ?? (code ? `שגיאה ${code}` : status)}`,
+    502,
+  );
 }
 
 function escapeXml(value: string): string {
@@ -166,6 +200,38 @@ export const sonosDriver: Driver = {
       name: 'previous',
       label: 'הרצועה הקודמת',
       run: (ctx) => soap(ctx.ip, 'transport', 'Previous', INSTANCE),
+    },
+    {
+      name: 'playUri',
+      label: 'נגן כתובת (תחנת רדיו או קובץ)',
+      params: [{ key: 'uri', label: 'כתובת הזרם', type: 'string' }],
+      /**
+       * Load a stream and start it. This is what makes the play button useful
+       * on a speaker with an empty queue: plain Play can only resume something
+       * already loaded, which is why it answers 701 from a standing start.
+       */
+      async run(ctx, args) {
+        const raw = String(args['uri'] ?? '').trim();
+        if (!raw) throw new DriverError('צריך כתובת');
+
+        let uri: URL;
+        try {
+          uri = new URL(raw);
+        } catch {
+          throw new DriverError('הכתובת לא תקינה');
+        }
+        if (!['http:', 'https:', 'x-rincon-mp3radio:'].includes(uri.protocol)) {
+          throw new DriverError('נתמכות כתובות http, https או x-rincon-mp3radio בלבד');
+        }
+
+        await soap(ctx.ip, 'transport', 'SetAVTransportURI', {
+          ...INSTANCE,
+          CurrentURI: raw,
+          CurrentURIMetaData: '',
+        });
+        await soap(ctx.ip, 'transport', 'Play', { ...INSTANCE, Speed: 1 });
+        return { ok: true, uri: raw };
+      },
     },
     {
       name: 'setVolume',
