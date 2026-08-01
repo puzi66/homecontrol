@@ -3,6 +3,7 @@ import { registry } from '../registry/store.js';
 import { castDriver } from './cast.js';
 import { hueDriver } from './hue.js';
 import { magicHomeDriver } from './magichome.js';
+import { miioDriver } from './miio.js';
 import { movaDriver } from './mova.js';
 import { sonosDriver } from './sonos.js';
 import { switcherDriver } from './switcher.js';
@@ -12,8 +13,12 @@ import { DriverError, type Driver, type DriverContext, type DriverState } from '
 const log = logger('drivers');
 
 const DRIVERS: Driver[] = [
-  hueDriver, sonosDriver, movaDriver, magicHomeDriver, switcherDriver, tuyaDriver, castDriver,
+  hueDriver, sonosDriver, movaDriver, magicHomeDriver,
+  switcherDriver, tuyaDriver, castDriver, miioDriver,
 ];
+
+/** Ids of drivers that actually exist, for validating what discovery suggests. */
+export const knownDriverIds = new Set(DRIVERS.map((d) => d.id));
 
 export const driversById = new Map(DRIVERS.map((d) => [d.id, d]));
 

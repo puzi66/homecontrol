@@ -69,13 +69,14 @@ export function classify(input: ClassifyInput): Classification {
       'security system': 'sensor', router: 'router', 'range extender': 'router',
     };
     const mapped = byCategory[homekit];
-    if (mapped) return { kind: mapped, confidence: 'high', suggestedDriver: 'homekit' };
+    if (mapped) return { kind: mapped, confidence: 'high', suggestedDriver: null };
   }
 
   // --- What the device called itself -------------------------------------
   // A hostname the firmware chose is weaker than a HomeKit category but far
-  // stronger than a MAC prefix: "mova_vacuum_r2475a" settles a question that no
-  // amount of port scanning could. DHCP is usually where these come from.
+  // stronger than a MAC prefix: a name like "<brand>_vacuum_<model>" settles in
+  // one field a question no amount of port scanning could answer. DHCP is
+  // usually where these come from.
   const declared = `${host} ${String(ev['dhcpHostname'] ?? '')} ${String(ev['dhcpVendorClass'] ?? '')}`.toLowerCase();
   const byName: [RegExp, DeviceKind][] = [
     [/vacuum|robot|roborock|sweeper/, 'vacuum'],
@@ -103,20 +104,19 @@ export function classify(input: ClassifyInput): Classification {
   }
 
   // --- Robot vacuums -----------------------------------------------------
-  // AltoBeam is Dreame's WiFi silicon and MOVA is Dreame's sub-brand, so an
-  // AltoBeam device answering miio is a vacuum. Other miio responders fall
-  // through to the rules below — a Xiaomi smart speaker speaks miio too — and
-  // are picked up by the generic miio rule further down.
+  // Only brands that exclusively make vacuums count here. AltoBeam used to be
+  // on this list, which was a mistake: it is a WiFi chip vendor, and its
+  // silicon turns up in cameras and speakers as readily as in robots. A chip
+  // maker says who built the radio, not what the product is — this rule
+  // confidently mislabelled a camera as a vacuum for some time.
   const speaksMiio = ev['miioDeviceId'] !== undefined;
   if (speaksMiio) {
-    const vacuumish =
-      vendor.includes('altobeam') ||
+    const vacuumBrand =
       vendor.includes('dreame') ||
       vendor.includes('roborock') ||
       host.includes('vacuum') ||
-      host.includes('mova') ||
-      host.includes('dreame');
-    if (vacuumish) return { kind: 'vacuum', confidence: 'high', suggestedDriver: 'mova' };
+      host.includes('mova');
+    if (vacuumBrand) return { kind: 'vacuum', confidence: 'high', suggestedDriver: 'mova' };
   }
 
   // --- Lighting ----------------------------------------------------------
@@ -186,14 +186,14 @@ export function classify(input: ClassifyInput): Classification {
 
   // --- Home automation hubs ---------------------------------------------
   if (ports.has(8123) || hasService('_homeassistant')) {
-    return { kind: 'hub', confidence: 'high', suggestedDriver: 'homeassistant' };
+    return { kind: 'hub', confidence: 'high', suggestedDriver: null };
   }
   if (hasService('_esphomelib') || ports.has(6053)) {
-    return { kind: 'iot', confidence: 'high', suggestedDriver: 'esphome' };
+    return { kind: 'iot', confidence: 'high', suggestedDriver: null };
   }
-  if (hasService('_matter')) return { kind: 'iot', confidence: 'medium', suggestedDriver: 'matter' };
-  if (hasService('_hap')) return { kind: 'iot', confidence: 'medium', suggestedDriver: 'homekit' };
-  if (ports.has(1883)) return { kind: 'hub', confidence: 'medium', suggestedDriver: 'mqtt' };
+  if (hasService('_matter')) return { kind: 'iot', confidence: 'medium', suggestedDriver: null };
+  if (hasService('_hap')) return { kind: 'iot', confidence: 'medium', suggestedDriver: null };
+  if (ports.has(1883)) return { kind: 'hub', confidence: 'medium', suggestedDriver: null };
 
   // --- Cameras -----------------------------------------------------------
   if (ports.has(554) || host.includes('cam') || model.includes('camera')) {

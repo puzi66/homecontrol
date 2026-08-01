@@ -13,9 +13,9 @@ const log = logger('dhcp');
  * chose for itself, and often a vendor class naming the firmware. Nothing is
  * sent; this only listens.
  *
- * It earns its keep on devices that answer no probe at all. One host here was
- * classified only as "unknown" by every active method, and announced itself in
- * DHCP as `mova_vacuum_r2475a`.
+ * It earns its keep on devices that answer no probe at all. A host that every
+ * active method could only file as "unknown" will often state its make, model
+ * and purpose here in a single field.
  *
  * The trade-off is timing: a client speaks when it boots and when it renews,
  * so identification arrives whenever it arrives rather than on demand.

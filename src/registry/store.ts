@@ -4,6 +4,7 @@ import { PATHS } from '../config.js';
 import { logger } from '../logger.js';
 import type { DiscoveredDevice, ScanResult } from '../discovery/types.js';
 import { displayNameFor } from '../discovery/classify.js';
+import { knownDriverIds } from '../drivers/index.js';
 import { stripBom } from './seen.js';
 import { draftFromDiscovered, type AdoptRequest, type RegisteredDevice, type RegistryFile } from './types.js';
 
@@ -196,7 +197,11 @@ export class DeviceRegistry {
         // pick the driver by hand when the scan knows the answer is a chore with
         // no decision in it — and devices adopted before a driver existed would
         // otherwise stay inert forever.
-        if (!device.driver && seen.suggestedDriver) {
+        // Only assign something that exists. Discovery names protocols it can
+        // recognise but that nothing here implements yet, and auto-assigning
+        // one of those would leave the device permanently erroring instead of
+        // simply unconfigured.
+        if (!device.driver && seen.suggestedDriver && knownDriverIds.has(seen.suggestedDriver)) {
           device.driver = seen.suggestedDriver;
           device.updatedAt = now;
           adopted += 1;
