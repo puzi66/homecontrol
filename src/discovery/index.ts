@@ -12,6 +12,7 @@ import { activeInterfaces, broadcastForCidr, hostsInCidr, ipToInt, powershell } 
 import { lookupVendors } from './oui.js';
 import { scanPortsBatch } from './ports.js';
 import { discoverSsdp } from './ssdp.js';
+import { discoverSwitcher } from './switcher.js';
 import { scanWifiNetworks } from './wifi.js';
 import type {
   DiscoveredDevice,
@@ -84,7 +85,7 @@ export async function scanNetwork(options: ScanOptions = {}, onProgress?: Progre
 
   const primaryAddress = interfaces[0]?.address ?? '0.0.0.0';
 
-  const [mdnsRecords, ssdpRecords, miioRecords, broadlinkRecords] = await Promise.all([
+  const [mdnsRecords, ssdpRecords, miioRecords, broadlinkRecords, switcherRecords] = await Promise.all([
     discoverMdns(listenMs, localAddresses).catch((e) => {
       log.warn(`mDNS failed: ${e.message}`);
       return [];
@@ -99,6 +100,13 @@ export async function scanNetwork(options: ScanOptions = {}, onProgress?: Progre
     }),
     discoverBroadlink(primaryAddress, broadcasts, listenMs).catch((e) => {
       log.warn(`Broadlink failed: ${e.message}`);
+      return [];
+    }),
+    // Switcher devices announce about every four seconds, so this window is a
+    // little longer than the others. It runs in parallel, so it costs nothing
+    // beyond extending the stage to match.
+    discoverSwitcher(Math.max(listenMs, 7000)).catch((e) => {
+      log.warn(`Switcher failed: ${e.message}`);
       return [];
     }),
     // The ARP sweep runs alongside the listeners; its results are read below.
@@ -142,6 +150,18 @@ export async function scanNetwork(options: ScanOptions = {}, onProgress?: Progre
   };
 
   for (const r of miioRecords) applyMiio(r);
+
+  for (const r of switcherRecords) {
+    const d = draftFor(r.ip);
+    d.sources.add('switcher');
+    d.mac ??= r.mac;
+    d.hostname ??= r.name;
+    d.evidence['switcherDeviceId'] = r.deviceId;
+    d.evidence['switcherOn'] = r.on;
+    d.evidence['switcherWatts'] = r.watts;
+    // 20003 is the Breeze/Runner range, which speaks a different control API.
+    d.evidence['switcherFamily'] = r.port === 20003 ? 'breeze/runner' : 'type1';
+  }
 
   for (const r of broadlinkRecords) {
     const d = draftFor(r.ip);

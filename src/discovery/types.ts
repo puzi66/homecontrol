@@ -5,6 +5,7 @@ export type DiscoverySource =
   | 'ssdp'       // answered an SSDP/UPnP M-SEARCH
   | 'miio'       // answered the Xiaomi/Dreame miio handshake
   | 'broadlink'  // answered the Broadlink discovery probe
+  | 'switcher'   // broadcast a Switcher state announcement
   | 'tuya'       // broadcast a Tuya announcement
   | 'tcp'        // had at least one open TCP port
   | 'dns'        // resolved to a hostname

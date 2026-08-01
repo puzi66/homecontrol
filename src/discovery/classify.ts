@@ -69,6 +69,16 @@ export function classify(input: ClassifyInput): Classification {
     return { kind: 'light', confidence: 'high', suggestedDriver: 'magichome' };
   }
 
+  // --- Switcher ----------------------------------------------------------
+  // The broadcast is unambiguous: nothing else speaks it.
+  if (ev['switcherDeviceId'] !== undefined) {
+    const family = String(ev['switcherFamily'] ?? '');
+    // Breeze is an AC controller and Runner is a shutter; neither is a plug,
+    // and neither speaks the Type 1 control API this driver implements.
+    if (family === 'breeze/runner') return { kind: 'iot', confidence: 'high', suggestedDriver: null };
+    return { kind: 'plug', confidence: 'high', suggestedDriver: 'switcher' };
+  }
+
   // --- IR blasters -------------------------------------------------------
   if (ev['broadlinkType'] !== undefined || vendor.includes('broadlink')) {
     const model = String(ev['broadlinkModel'] ?? '').toLowerCase();
