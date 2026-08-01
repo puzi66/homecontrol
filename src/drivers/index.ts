@@ -1,5 +1,6 @@
 import { logger } from '../logger.js';
 import { registry } from '../registry/store.js';
+import { castDriver } from './cast.js';
 import { hueDriver } from './hue.js';
 import { magicHomeDriver } from './magichome.js';
 import { movaDriver } from './mova.js';
@@ -11,7 +12,7 @@ import { DriverError, type Driver, type DriverContext, type DriverState } from '
 const log = logger('drivers');
 
 const DRIVERS: Driver[] = [
-  hueDriver, sonosDriver, movaDriver, magicHomeDriver, switcherDriver, tuyaDriver,
+  hueDriver, sonosDriver, movaDriver, magicHomeDriver, switcherDriver, tuyaDriver, castDriver,
 ];
 
 export const driversById = new Map(DRIVERS.map((d) => [d.id, d]));
