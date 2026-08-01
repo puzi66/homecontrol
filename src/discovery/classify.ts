@@ -90,10 +90,10 @@ export function classify(input: ClassifyInput): Classification {
   }
 
   // --- Tuya --------------------------------------------------------------
-  // 6668 is Tuya's local control port. Controlling one needs a per-device local
-  // key from the Tuya cloud, so no driver is suggested.
+  // 6668 is Tuya's local control port. Control needs a per-device local key from
+  // the Tuya cloud, which tuya-keys fetches — so the driver is worth suggesting.
   if (ports.has(6668) || ev['tuyaGwId'] !== undefined) {
-    return { kind: 'iot', confidence: 'high', suggestedDriver: null };
+    return { kind: 'iot', confidence: 'high', suggestedDriver: 'tuya' };
   }
 
   // --- Audio -------------------------------------------------------------

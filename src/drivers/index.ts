@@ -5,11 +5,14 @@ import { magicHomeDriver } from './magichome.js';
 import { movaDriver } from './mova.js';
 import { sonosDriver } from './sonos.js';
 import { switcherDriver } from './switcher.js';
+import { tuyaDriver } from './tuya.js';
 import { DriverError, type Driver, type DriverContext, type DriverState } from './types.js';
 
 const log = logger('drivers');
 
-const DRIVERS: Driver[] = [hueDriver, sonosDriver, movaDriver, magicHomeDriver, switcherDriver];
+const DRIVERS: Driver[] = [
+  hueDriver, sonosDriver, movaDriver, magicHomeDriver, switcherDriver, tuyaDriver,
+];
 
 export const driversById = new Map(DRIVERS.map((d) => [d.id, d]));
 
