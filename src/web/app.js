@@ -582,6 +582,14 @@ function discoveredRow(device, index) {
   row.append(elLtr('span', 'row__mid', device.ip));
   row.append(el('span', 'row__vendor', device.vendor ?? '—'));
 
+  // A device the ledger remembers but the last sweep did not find. Worth
+  // showing rather than hiding — "it used to be here" is information.
+  const absent = device.present === false;
+  if (absent) {
+    row.style.opacity = '0.55';
+    row.append(el('span', 'tag tag--mute', `נראה ${timeAgo(device.lastSeen)}`));
+  }
+
   if (device.adopted) {
     row.append(el('span', 'tag', 'נוסף'));
   } else {
@@ -623,8 +631,16 @@ function renderDiscovered() {
   if (state.discFilter === 'new') list = list.filter((d) => !d.adopted);
   else if (state.discFilter === 'smart') list = list.filter((d) => SMART.has(d.kind));
 
+  const absent = state.discovered.filter((d) => d.present === false).length;
   $('#net-sub').textContent = state.discovered.length
-    ? `${state.discovered.length} מארחים בסריקה האחרונה · ${state.discovered.filter((d) => !d.adopted).length} עוד לא נוספו`
+    ? [
+        `${state.discovered.length} מכשירים ידועים`,
+        `${state.discovered.filter((d) => !d.adopted).length} עוד לא נוספו`,
+        absent ? `${absent} לא נראו בסריקה האחרונה` : null,
+        state.fromLedger ? 'מהזיכרון — טרם בוצעה סריקה בהפעלה הזו' : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
     : 'כל מה שהסריקה האחרונה מצאה.';
 
   if (list.length === 0) {
@@ -1395,9 +1411,12 @@ async function boot() {
     ]);
     state.drivers = drivers.drivers;
     state.scanning = health.scanning;
+    // The server serves the persisted ledger when this process has not scanned
+    // yet, so the list is populated straight after a restart.
+    state.fromLedger = scan.fromLedger === true;
     if (scan.result) {
-      state.discovered = scan.result.devices;
-      state.wifi = scan.result.wifiNetworks;
+      state.discovered = scan.result.devices ?? [];
+      state.wifi = scan.result.wifiNetworks ?? [];
     }
     await loadDevices();
     await loadAutomations();

@@ -37,6 +37,12 @@ export interface DiscoveredDevice {
   suggestedDriver: string | null;
   /** True when this device is already in the registry. */
   adopted: boolean;
+  /**
+   * Whether the most recent sweep actually found it. Only set when the list
+   * came from the persisted ledger, which remembers devices that have gone
+   * quiet — a live scan result is present by definition.
+   */
+  present?: boolean;
   firstSeen: string;
   lastSeen: string;
 }

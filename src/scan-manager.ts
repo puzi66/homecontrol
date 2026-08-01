@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { scanNetwork } from './discovery/index.js';
 import type { ScanOptions, ScanProgress, ScanResult } from './discovery/types.js';
 import { logger } from './logger.js';
+import { seen } from './registry/seen.js';
 import { registry } from './registry/store.js';
 
 const log = logger('scan');
@@ -26,6 +27,19 @@ class ScanManager extends EventEmitter {
     return this.#lastResult;
   }
 
+  /**
+   * What to show the dashboard. Falls back to the persisted ledger, so the
+   * device list is populated immediately after a restart rather than empty
+   * until someone runs a scan.
+   */
+  discoveredDevices(): { devices: ReturnType<typeof seen.asDiscovered>; fromLedger: boolean } {
+    if (this.#lastResult) {
+      return { devices: this.#lastResult.devices, fromLedger: false };
+    }
+    const adopted = new Set(registry.list().map((d) => d.id));
+    return { devices: seen.asDiscovered(adopted), fromLedger: true };
+  }
+
   /** Progress events for the scan currently running, so late subscribers catch up. */
   get progressLog(): ScanProgress[] {
     return [...this.#progressLog];
@@ -48,6 +62,11 @@ class ScanManager extends EventEmitter {
 
         // Adopted devices learn their new address here; unseen ones go offline.
         await registry.reconcile(result);
+
+        // Everything the scan saw goes into the ledger, adopted or not, so a
+        // restart does not throw away the picture of the network.
+        await seen.merge(result);
+
         result.devices = registry.annotate(result.devices);
 
         this.#lastResult = result;

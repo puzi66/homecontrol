@@ -12,6 +12,7 @@ import type { DeviceKind, ScanProgress } from './discovery/types.js';
 import { scanWifiNetworks } from './discovery/wifi.js';
 import { logger } from './logger.js';
 import { detectCapabilities, reportCapabilities, type Capabilities } from './platform.js';
+import { seen } from './registry/seen.js';
 import { registry } from './registry/store.js';
 import type { AdoptRequest } from './registry/types.js';
 import { scanManager } from './scan-manager.js';
@@ -63,11 +64,47 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // --- Discovery ---------------------------------------------------------
 
-  /** Most recent scan result without starting a new one. */
-  app.get('/api/scan', async () => ({
-    running: scanManager.isRunning,
-    result: scanManager.lastResult,
+  /**
+   * Most recent scan result without starting a new one.
+   *
+   * When this process has not scanned yet, the devices come from the persisted
+   * ledger instead of an empty list — the network does not stop existing
+   * because the server restarted.
+   */
+  app.get('/api/scan', async () => {
+    const { devices, fromLedger } = scanManager.discoveredDevices();
+    return {
+      running: scanManager.isRunning,
+      fromLedger,
+      result: scanManager.lastResult ?? {
+        startedAt: seen.lastScanAt(),
+        finishedAt: seen.lastScanAt(),
+        durationMs: 0,
+        interfaces: [],
+        subnetsScanned: [],
+        devices,
+        wifiNetworks: [],
+        hostDiscovery: 'arp' as const,
+      },
+    };
+  });
+
+  /** The full ledger: everything ever seen, present or not. */
+  app.get('/api/seen', async () => ({
+    devices: seen.list(),
+    lastScanAt: seen.lastScanAt(),
   }));
+
+  app.delete<{ Params: { id: string } }>('/api/seen/:id', async (request, reply) => {
+    const ok = await seen.forget(decodeURIComponent(request.params.id));
+    if (!ok) return reply.code(404).send({ error: 'device not found in the ledger' });
+    return reply.code(204).send();
+  });
+
+  app.delete('/api/seen', async (_request, reply) => {
+    await seen.clear();
+    return reply.code(204).send();
+  });
 
   /**
    * Kick off a scan. Returns immediately with 202; progress arrives over the
@@ -382,6 +419,7 @@ export async function startServer(): Promise<FastifyInstance> {
   reportCapabilities(capabilities);
 
   await registry.load();
+  await seen.load();
   await automations.load();
 
   const app = await buildServer();
